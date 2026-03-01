@@ -1,0 +1,864 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BartlebyGPT</title>
+  <style>
+    :root {
+      --bg: #f2efe8;
+      --panel: rgba(255, 255, 255, 0.88);
+      --panel-border: rgba(77, 77, 77, 0.14);
+      --text: #1f1d19;
+      --muted: #66605a;
+      --accent: #c95f17;
+      --accent-dark: #a44808;
+      --user-bg: #f6ead8;
+      --bot-bg: #ffffff;
+      --shadow: 0 10px 28px rgba(53, 40, 27, 0.06);
+      --radius: 4px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at top right, rgba(201, 95, 23, 0.10), transparent 34%),
+        radial-gradient(circle at bottom left, rgba(90, 111, 84, 0.08), transparent 28%),
+        linear-gradient(180deg, #f7f4ee 0%, var(--bg) 100%);
+      color: var(--text);
+      font-family: "Avenir Next", "Helvetica Neue", "Segoe UI", sans-serif;
+    }
+
+    body {
+      padding: 0;
+    }
+
+    .app-shell {
+      width: 100%;
+      height: 100dvh;
+      padding: 16px;
+      display: grid;
+      grid-template-rows: auto 1fr auto auto;
+      gap: 12px;
+    }
+
+    .composer,
+    .advanced {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(8px);
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      column-gap: 18px;
+      row-gap: 4px;
+      padding: 2px 0 4px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: baseline;
+      gap: 9px;
+      min-width: 0;
+    }
+
+    .brand-copy {
+      min-width: 0;
+    }
+
+    .brand-copy h1 {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1;
+    }
+
+    .status-pill {
+      flex: 0 0 auto;
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+      text-transform: uppercase;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 120ms ease;
+    }
+
+    .status-pill.is-visible {
+      opacity: 0.68;
+      visibility: visible;
+    }
+
+    .topbar-note,
+    .warning {
+      margin: 0;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .topbar-note {
+      text-align: right;
+      white-space: nowrap;
+      font-family: "Avenir Next", "Helvetica Neue", "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.2;
+      letter-spacing: 0.01em;
+      text-transform: none;
+      color: rgba(31, 29, 25, 0.74);
+      opacity: 1;
+    }
+
+    .topbar-note a {
+      color: inherit;
+      text-decoration: none;
+      border-bottom: 1px solid rgba(77, 77, 77, 0.18);
+    }
+
+    .chat-panel {
+      background: rgba(255, 255, 255, 0.65);
+      border: 1px solid rgba(77, 77, 77, 0.10);
+      border-radius: 3px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .messages {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .message-row {
+      display: flex;
+    }
+
+    .message-row.user {
+      justify-content: flex-end;
+    }
+
+    .message-row.assistant {
+      justify-content: flex-start;
+    }
+
+    .bubble {
+      max-width: min(78ch, 82%);
+      border-radius: 3px;
+      padding: 12px 14px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border: 1px solid rgba(77, 77, 77, 0.10);
+      box-shadow: 0 8px 30px rgba(43, 32, 24, 0.05);
+    }
+
+    .message-row.user .bubble {
+      background: var(--user-bg);
+    }
+
+    .message-row.assistant .bubble {
+      background: var(--bot-bg);
+    }
+
+    .composer {
+      padding: 12px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+    }
+
+    .input-stack {
+      display: grid;
+      gap: 8px;
+    }
+
+    textarea,
+    input,
+    select {
+      width: 100%;
+      border: 1px solid rgba(77, 77, 77, 0.28);
+      border-radius: 3px;
+      background: rgba(255, 255, 255, 0.92);
+      color: var(--text);
+      padding: 12px 13px;
+      font: inherit;
+      transition: border-color 120ms ease, box-shadow 120ms ease;
+    }
+
+    textarea:focus,
+    input:focus,
+    select:focus {
+      outline: none;
+      border-color: rgba(77, 77, 77, 0.6);
+      box-shadow: 0 0 0 3px rgba(77, 77, 77, 0.12);
+    }
+
+    textarea {
+      min-height: 70px;
+      max-height: 180px;
+      resize: vertical;
+    }
+
+    .input-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .send-button {
+      align-self: end;
+      min-width: 92px;
+      height: 46px;
+      border: 0;
+      border-radius: 3px;
+      background: linear-gradient(180deg, var(--accent), var(--accent-dark));
+      color: white;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 12px 30px rgba(169, 72, 8, 0.22);
+    }
+
+    .send-button:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+      box-shadow: none;
+    }
+
+    details.advanced {
+      padding: 0;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    details.advanced > summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 14px 18px;
+      font-weight: 700;
+      border-bottom: 1px solid transparent;
+      user-select: none;
+    }
+
+    details.advanced[open] > summary {
+      border-bottom-color: rgba(77, 77, 77, 0.10);
+    }
+
+    details.advanced > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .advanced-content {
+      padding: 14px 18px 18px;
+      display: grid;
+      gap: 14px;
+      max-height: min(34dvh, 320px);
+      overflow: auto;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .field-grid.three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .field label {
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      letter-spacing: 0.03em;
+    }
+
+    .warning {
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(201, 95, 23, 0.18);
+      background: rgba(201, 95, 23, 0.06);
+    }
+
+    @media (max-width: 760px) {
+      .app-shell {
+        padding: 12px;
+        gap: 10px;
+      }
+
+      .topbar {
+        max-width: 100%;
+        grid-template-columns: 1fr;
+        align-items: start;
+        gap: 6px;
+      }
+
+      .topbar-note {
+        width: 100%;
+      }
+
+      .topbar-note {
+        white-space: normal;
+        text-align: left;
+      }
+
+      .composer {
+        grid-template-columns: 1fr;
+      }
+
+      .send-button {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .field-grid,
+      .field-grid.three {
+        grid-template-columns: 1fr;
+      }
+
+      .bubble {
+        max-width: 92%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-copy">
+          <h1>BartlebyGPT</h1>
+        </div>
+        <div id="status-pill" class="status-pill">Idle</div>
+      </div>
+      <p class="topbar-note">A <a href="https://stuartgeiger.com" target="_blank" rel="noreferrer">Stuart Geiger</a> Hallucination</p>
+    </header>
+
+    <main class="chat-panel">
+      <div id="messages" class="messages"></div>
+    </main>
+
+    <section class="composer">
+      <div class="input-stack">
+        <textarea id="message-input" placeholder="Type a message. Shift+Enter for a newline."></textarea>
+        <div class="input-meta">
+          <span id="input-hint"></span>
+          <span id="input-count">0 chars</span>
+        </div>
+      </div>
+      <button id="send-button" class="send-button">Send</button>
+    </section>
+
+    <details class="advanced">
+      <summary>Advanced</summary>
+      <div class="advanced-content">
+        <p class="warning">
+          This is a browser-only client. The remote vLLM server must allow CORS.
+          Any API key entered here is exposed to the browser and should only be used for trusted endpoints.
+        </p>
+
+        <div class="field-grid">
+          <div class="field">
+            <label>
+              VLLM_BASE_URL
+              <input id="base-url" type="text" placeholder="https://motherboard-genre-gloves-send.trycloudflare.com">
+            </label>
+          </div>
+          <div class="field">
+            <label>
+              VLLM_MODEL
+              <input id="model-name" type="text" placeholder="Leave blank to auto-discover">
+            </label>
+          </div>
+        </div>
+
+        <div class="field-grid">
+          <div class="field">
+            <label>
+              VLLM_API_KEY
+              <input id="api-key" type="password" placeholder="Optional bearer token">
+            </label>
+          </div>
+          <div class="field">
+            <label>
+              SYSTEM_PROMPT
+              <input id="system-prompt" type="text" placeholder="Optional system message">
+            </label>
+          </div>
+        </div>
+
+        <div class="field-grid three">
+          <div class="field">
+            <label>
+              MAX_INPUT_CHARS
+              <input id="max-input-chars" type="number" min="1" step="1">
+            </label>
+          </div>
+          <div class="field">
+            <label>
+              MAX_NEW_TOKENS
+              <input id="max-new-tokens" type="number" min="1" step="1">
+            </label>
+          </div>
+          <div class="field">
+            <label>
+              REQUEST_TIMEOUT (s)
+              <input id="request-timeout" type="number" min="1" step="1">
+            </label>
+          </div>
+        </div>
+
+        <div class="field-grid">
+          <div class="field">
+            <label>
+              TEMPERATURE
+              <input id="temperature" type="number" min="0" max="2" step="0.05">
+            </label>
+          </div>
+          <div class="field">
+            <label>
+              TOP_P
+              <input id="top-p" type="number" min="0.1" max="1" step="0.05">
+            </label>
+          </div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <script>
+    const SETTINGS_KEY = "bartleby-remote-settings-v1";
+    const DEFAULT_BASE_URL = "https://motherboard-genre-gloves-send.trycloudflare.com";
+    const MODEL_MAX_CONTEXT_TOKENS = 2048;
+    const CHARS_PER_TOKEN_ESTIMATE = 2.6;
+    const TOKEN_SAFETY_MARGIN = 32;
+
+    const defaults = {
+      baseUrl: DEFAULT_BASE_URL,
+      modelName: "",
+      apiKey: "",
+      systemPrompt: "",
+      maxInputChars: 2000,
+      maxNewTokens: 512,
+      requestTimeout: 600,
+      temperature: 0.7,
+      topP: 0.9,
+    };
+
+    const elements = {
+      messages: document.getElementById("messages"),
+      statusPill: document.getElementById("status-pill"),
+      input: document.getElementById("message-input"),
+      sendButton: document.getElementById("send-button"),
+      inputCount: document.getElementById("input-count"),
+      inputHint: document.getElementById("input-hint"),
+      baseUrl: document.getElementById("base-url"),
+      modelName: document.getElementById("model-name"),
+      apiKey: document.getElementById("api-key"),
+      systemPrompt: document.getElementById("system-prompt"),
+      maxInputChars: document.getElementById("max-input-chars"),
+      maxNewTokens: document.getElementById("max-new-tokens"),
+      requestTimeout: document.getElementById("request-timeout"),
+      temperature: document.getElementById("temperature"),
+      topP: document.getElementById("top-p"),
+    };
+
+    const state = {
+      busy: false,
+      history: [],
+      modelCache: {},
+    };
+
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem(SETTINGS_KEY);
+        if (!raw) return { ...defaults };
+        return { ...defaults, ...JSON.parse(raw) };
+      } catch (_err) {
+        return { ...defaults };
+      }
+    }
+
+    function saveSettings() {
+      const settings = getSettings();
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    }
+
+    function getSettings() {
+      return {
+        baseUrl: elements.baseUrl.value.trim().replace(/\/+$/, ""),
+        modelName: elements.modelName.value.trim(),
+        apiKey: elements.apiKey.value.trim(),
+        systemPrompt: elements.systemPrompt.value,
+        maxInputChars: coercePositiveInt(elements.maxInputChars.value, defaults.maxInputChars),
+        maxNewTokens: coercePositiveInt(elements.maxNewTokens.value, defaults.maxNewTokens),
+        requestTimeout: coercePositiveInt(elements.requestTimeout.value, defaults.requestTimeout),
+        temperature: coerceFloat(elements.temperature.value, defaults.temperature),
+        topP: coerceFloat(elements.topP.value, defaults.topP),
+      };
+    }
+
+    function applySettings(settings) {
+      elements.baseUrl.value = (settings.baseUrl || DEFAULT_BASE_URL).trim();
+      elements.modelName.value = settings.modelName;
+      elements.apiKey.value = settings.apiKey;
+      elements.systemPrompt.value = settings.systemPrompt;
+      elements.maxInputChars.value = settings.maxInputChars;
+      elements.maxNewTokens.value = settings.maxNewTokens;
+      elements.requestTimeout.value = settings.requestTimeout;
+      elements.temperature.value = settings.temperature;
+      elements.topP.value = settings.topP;
+      updateInputCount();
+    }
+
+    function coercePositiveInt(value, fallback) {
+      const parsed = Number.parseInt(String(value), 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    }
+
+    function coerceFloat(value, fallback) {
+      const parsed = Number.parseFloat(String(value));
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
+    function setBusy(next, label) {
+      state.busy = !!next;
+      elements.sendButton.disabled = state.busy;
+      const text = label || (state.busy ? "Busy" : "Idle");
+      elements.statusPill.textContent = text;
+      const showStatus = text && text.toLowerCase() !== "idle";
+      elements.statusPill.classList.toggle("is-visible", showStatus);
+    }
+
+    function updateInputCount() {
+      const current = elements.input.value.length;
+      const maxChars = coercePositiveInt(elements.maxInputChars.value, defaults.maxInputChars);
+      elements.inputCount.textContent = `${current} / ${maxChars} chars`;
+    }
+
+    function scrollMessagesToBottom() {
+      elements.messages.scrollTop = elements.messages.scrollHeight;
+    }
+
+    function createBubble(role, content) {
+      const row = document.createElement("div");
+      row.className = `message-row ${role}`;
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = content;
+
+      row.appendChild(bubble);
+      elements.messages.appendChild(row);
+      scrollMessagesToBottom();
+      return bubble;
+    }
+
+    function renderWelcome() {}
+
+    function authHeaders(apiKey) {
+      const headers = {};
+      if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+      return headers;
+    }
+
+    async function resolveModel(settings) {
+      if (settings.modelName) return settings.modelName;
+
+      const cacheKey = JSON.stringify({
+        baseUrl: settings.baseUrl,
+        apiKey: settings.apiKey,
+      });
+
+      if (state.modelCache[cacheKey]) {
+        return state.modelCache[cacheKey];
+      }
+
+      const response = await fetch(`${settings.baseUrl}/v1/models`, {
+        method: "GET",
+        headers: authHeaders(settings.apiKey),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Model discovery failed: ${response.status} ${response.statusText}`);
+      }
+
+      const payload = await response.json();
+      const data = Array.isArray(payload.data) ? payload.data : [];
+      if (!data.length || !data[0].id) {
+        throw new Error("Remote server returned no models.");
+      }
+
+      const modelId = String(data[0].id).trim();
+      state.modelCache[cacheKey] = modelId;
+      return modelId;
+    }
+
+    function estimateTokens(text) {
+      if (!text) return 0;
+      return Math.ceil(String(text).length / CHARS_PER_TOKEN_ESTIMATE);
+    }
+
+    function messageTokenCost(message) {
+      return estimateTokens(message.content) + 8;
+    }
+
+    function trimToEstimatedTokens(text, maxTokens) {
+      if (maxTokens <= 0) return "";
+      const maxChars = Math.max(1, Math.floor(maxTokens * CHARS_PER_TOKEN_ESTIMATE));
+      if (text.length <= maxChars) return text;
+      return text.slice(0, maxChars);
+    }
+
+    function buildMessages(settings, userText) {
+      const systemPrompt = settings.systemPrompt.trim();
+      const inputTokenBudget = Math.max(
+        1,
+        MODEL_MAX_CONTEXT_TOKENS - settings.maxNewTokens - TOKEN_SAFETY_MARGIN
+      );
+
+      const outgoing = [];
+      let usedTokens = 0;
+
+      if (systemPrompt) {
+        const systemMessage = {
+          role: "system",
+          content: systemPrompt,
+        };
+        outgoing.push(systemMessage);
+        usedTokens += messageTokenCost(systemMessage);
+      }
+
+      const reservedUserOverhead = 8;
+      const remainingForHistoryAndUser = Math.max(1, inputTokenBudget - usedTokens);
+      let availableForUser = Math.max(1, remainingForHistoryAndUser - reservedUserOverhead);
+
+      const historyCopy = [...state.history];
+      while (historyCopy.length) {
+        const candidate = historyCopy[0];
+        const cost = messageTokenCost(candidate);
+        if (usedTokens + cost + reservedUserOverhead > inputTokenBudget) {
+          historyCopy.shift();
+          continue;
+        }
+        outgoing.push(candidate);
+        usedTokens += cost;
+        availableForUser = Math.max(1, inputTokenBudget - usedTokens - reservedUserOverhead);
+        historyCopy.shift();
+      }
+
+      const trimmedUserText = trimToEstimatedTokens(userText, availableForUser);
+      const userMessage = {
+        role: "user",
+        content: trimmedUserText,
+      };
+      outgoing.push(userMessage);
+
+      return {
+        messages: outgoing,
+        userText: trimmedUserText,
+        wasTokenTrimmed: trimmedUserText.length < userText.length,
+      };
+    }
+
+    async function streamCompletion(settings, assistantBubble, userText) {
+      const controller = new AbortController();
+      const timeoutMs = settings.requestTimeout * 1000;
+      const timeoutId = window.setTimeout(() => controller.abort("timeout"), timeoutMs);
+
+      try {
+        const model = await resolveModel(settings);
+        const prepared = buildMessages(settings, userText);
+        const response = await fetch(`${settings.baseUrl}/v1/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeaders(settings.apiKey),
+          },
+          body: JSON.stringify({
+            model,
+            messages: prepared.messages,
+            temperature: settings.temperature,
+            top_p: settings.topP,
+            max_tokens: settings.maxNewTokens,
+            stream: true,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok || !response.body) {
+          let body = "";
+          try {
+            body = (await response.text()).slice(0, 600);
+          } catch (_err) {}
+          throw new Error(`Remote error ${response.status}: ${body || response.statusText}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
+        let output = "";
+        let sawToken = false;
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split(/\r?\n/);
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+
+            const data = line.slice(6).trim();
+            if (!data) continue;
+            if (data === "[DONE]") {
+              return output;
+            }
+
+            let payload;
+            try {
+              payload = JSON.parse(data);
+            } catch (_err) {
+              continue;
+            }
+
+            const choice = (payload.choices || [])[0] || {};
+            const delta = choice.delta || {};
+            const token = delta.content;
+            if (!token) continue;
+
+            sawToken = true;
+            output += token;
+            assistantBubble.textContent = output;
+            scrollMessagesToBottom();
+          }
+        }
+
+        if (!sawToken) {
+          throw new Error("Remote server returned no streamed content.");
+        }
+
+        return {
+          output,
+          userText: prepared.userText,
+          wasTokenTrimmed: prepared.wasTokenTrimmed,
+        };
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    }
+
+    async function handleSend() {
+      if (state.busy) return;
+
+      const settings = getSettings();
+      saveSettings();
+
+      if (!settings.baseUrl) {
+        elements.inputHint.textContent = "Set VLLM_BASE_URL in Advanced first.";
+        return;
+      }
+
+      const rawText = elements.input.value.trim();
+      if (!rawText) return;
+
+      const charClampedText = rawText.slice(0, settings.maxInputChars);
+      const wasCharTruncated = rawText.length > charClampedText.length;
+
+      const prepared = buildMessages(settings, charClampedText);
+      const userText = prepared.userText;
+      const wasTokenTrimmed = prepared.wasTokenTrimmed;
+
+      elements.input.value = "";
+      updateInputCount();
+      if (wasTokenTrimmed) {
+        elements.inputHint.textContent = `Input trimmed to fit the ${MODEL_MAX_CONTEXT_TOKENS}-token context window.`;
+      } else if (wasCharTruncated) {
+        elements.inputHint.textContent = `Input truncated to ${settings.maxInputChars} chars before send.`;
+      } else {
+        elements.inputHint.textContent = "Streaming response...";
+      }
+
+      createBubble("user", userText);
+      const assistantBubble = createBubble("assistant", "");
+
+      setBusy(true, "Streaming");
+
+      try {
+        const result = await streamCompletion(settings, assistantBubble, userText);
+        state.history.push({ role: "user", content: result.userText });
+        state.history.push({ role: "assistant", content: result.output });
+        elements.inputHint.textContent = result.wasTokenTrimmed
+          ? `Done. Input was trimmed to fit the ${MODEL_MAX_CONTEXT_TOKENS}-token context window.`
+          : "Done.";
+        setBusy(false, "Idle");
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Request failed.";
+        assistantBubble.textContent = `Error: ${message}`;
+        elements.inputHint.textContent = message;
+        setBusy(false, "Error");
+      }
+    }
+
+    elements.input.addEventListener("input", updateInputCount);
+    elements.input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        handleSend();
+      }
+    });
+
+    elements.sendButton.addEventListener("click", handleSend);
+
+    [
+      elements.baseUrl,
+      elements.modelName,
+      elements.apiKey,
+      elements.systemPrompt,
+      elements.maxInputChars,
+      elements.maxNewTokens,
+      elements.requestTimeout,
+      elements.temperature,
+      elements.topP,
+    ].forEach((element) => {
+      element.addEventListener("change", saveSettings);
+      element.addEventListener("blur", saveSettings);
+    });
+
+    applySettings(loadSettings());
+    renderWelcome();
+  </script>
+</body>
+</html>
