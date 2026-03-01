@@ -17,6 +17,8 @@
       --accent-dim: #4a4840;
       --user-bg: #ddd9cc;
       --bot-bg: #efebd8;
+      --card-bg: rgba(246, 242, 232, 0.92);
+      --card-bg-hover: rgba(252, 248, 238, 0.98);
       --shadow: 0 6px 22px rgba(10, 10, 8, 0.09);
       --radius: 2px;
       --rule: rgba(30, 30, 28, 0.09);
@@ -92,6 +94,10 @@
       font-style: italic;
       font-weight: 500;
       font-size: 17px;
+    }
+
+    .power-currently {
+      display: inline;
     }
 
     .power-display .power-val {
@@ -206,7 +212,13 @@
     }
 
     .brand-copy {
+      padding: 0;
+      border: 0;
+      background: transparent;
       min-width: 0;
+      text-align: left;
+      cursor: pointer;
+      appearance: none;
     }
 
     .brand-copy h1 {
@@ -270,6 +282,10 @@
       border-bottom: 1px solid rgba(28, 28, 26, 0.20);
     }
 
+    .mobile-hallucination {
+      display: none;
+    }
+
     .chat-panel {
       background: rgba(236, 232, 220, 0.60);
       border: 1px solid rgba(30, 30, 28, 0.08);
@@ -289,6 +305,94 @@
       display: flex;
       flex-direction: column;
       gap: 16px;
+    }
+
+    .messages.is-welcome {
+      justify-content: center;
+    }
+
+    .welcome-shell {
+      margin: auto;
+      width: min(100%, 1080px);
+      display: grid;
+      gap: 12px;
+      align-content: center;
+    }
+
+    .welcome-title {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      font-size: clamp(28px, 4vw, 42px);
+      line-height: 1.02;
+      font-weight: 700;
+      color: rgba(26, 26, 24, 0.92);
+      text-wrap: balance;
+    }
+
+    .welcome-subtitle {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      font-size: clamp(24px, 3.4vw, 34px);
+      line-height: 1.08;
+      font-weight: 500;
+      color: rgba(28, 26, 20, 0.64);
+      text-wrap: balance;
+    }
+
+    .welcome-title em {
+      font-style: italic;
+      font-weight: 700;
+    }
+
+    .suggestion-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .suggestion-card {
+      width: 100%;
+      min-height: 180px;
+      padding: 18px;
+      display: grid;
+      align-content: start;
+      gap: 14px;
+      text-align: left;
+      border: 1px solid rgba(30, 30, 28, 0.10);
+      border-radius: 12px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0)),
+        var(--card-bg);
+      color: inherit;
+      cursor: pointer;
+      box-shadow: 0 16px 40px rgba(22, 18, 10, 0.06);
+      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+    }
+
+    .suggestion-card:hover,
+    .suggestion-card:focus-visible {
+      transform: translateY(-2px);
+      border-color: rgba(30, 30, 28, 0.18);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.70), rgba(255, 255, 255, 0.05)),
+        var(--card-bg-hover);
+      box-shadow: 0 20px 48px rgba(22, 18, 10, 0.10);
+      outline: none;
+    }
+
+    .suggestion-title {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.1;
+      font-weight: 600;
+      color: rgba(28, 26, 20, 0.88);
+    }
+
+    .suggestion-prompt {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.45;
+      color: rgba(28, 26, 20, 0.78);
     }
 
     .message-row {
@@ -419,8 +523,11 @@
       cursor: pointer;
       list-style: none;
       padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
       font-family: "EB Garamond", Georgia, serif;
-      font-style: italic;
+      font-style: normal;
       font-size: 17px;
       font-weight: 500;
       letter-spacing: 0.02em;
@@ -433,6 +540,19 @@
       border-bottom-color: var(--rule);
     }
 
+    details.advanced > summary::before {
+      content: "▸";
+      font-style: normal;
+      font-size: 14px;
+      line-height: 1;
+      transform-origin: center;
+      transition: transform 140ms ease;
+    }
+
+    details.advanced[open] > summary::before {
+      transform: rotate(90deg);
+    }
+
     details.advanced > summary::-webkit-details-marker {
       display: none;
     }
@@ -443,6 +563,26 @@
       gap: 4px;
       max-height: min(34dvh, 320px);
       overflow: auto;
+    }
+
+    details.connection-settings {
+      border: 0;
+      background: transparent;
+      margin-top: 8px;
+    }
+
+    details.connection-settings > summary {
+      display: none;
+    }
+
+    .connection-settings-content {
+      padding: 0;
+      display: grid;
+      gap: 8px;
+    }
+
+    .connection-toggle {
+      cursor: default;
     }
 
     .field-grid {
@@ -459,7 +599,7 @@
       display: grid;
       gap: 6px;
       font-family: "EB Garamond", Georgia, serif;
-      font-style: italic;
+      font-style: normal;
       font-size: 15px;
       font-weight: 500;
       color: var(--muted);
@@ -471,7 +611,7 @@
       border-radius: var(--radius);
       border: 1px solid rgba(30, 30, 28, 0.14);
       background: rgba(30, 30, 28, 0.04);
-      font-style: italic;
+      font-style: normal;
       font-size: 16px;
       line-height: 1.6;
     }
@@ -484,6 +624,10 @@
 
       .messages {
         padding-bottom: 0;
+      }
+
+      .messages.is-welcome {
+        justify-content: flex-start;
       }
 
       .composer {
@@ -504,11 +648,7 @@
       }
 
       .topbar-note {
-        grid-column: 2;
-        grid-row: 1;
-        white-space: nowrap;
-        text-align: right;
-        font-size: 13px;
+        display: none;
       }
 
       #power-display {
@@ -529,6 +669,45 @@
 
       .brand-copy h1 {
         font-size: 20px;
+      }
+
+      .welcome-shell {
+        gap: 14px;
+      }
+
+      .welcome-title {
+        font-size: 28px;
+      }
+
+      .welcome-subtitle {
+        font-size: 24px;
+      }
+
+      .suggestion-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+
+      .suggestion-card {
+        min-height: 0;
+        padding: 14px;
+        gap: 10px;
+      }
+
+      .suggestion-title {
+        font-size: 18px;
+      }
+
+      .suggestion-prompt {
+        font-size: 16px;
+        display: -webkit-box;
+        overflow: hidden;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+      }
+
+      .power-currently {
+        display: none;
       }
 
       .composer {
@@ -554,6 +733,37 @@
         min-width: 0;
         height: 1.5em;
         padding: 1px;
+      }
+
+      .mobile-hallucination {
+        display: block;
+        position: fixed;
+        right: 8px;
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 4px);
+        z-index: 6;
+        margin: 0;
+        font-family: "EB Garamond", Georgia, serif;
+        font-style: italic;
+        font-size: 17px;
+        line-height: 1.2;
+        color: rgba(28, 28, 26, 0.55);
+        background: rgba(238, 234, 224, 0.92);
+        padding: 3px 6px;
+        border: 1px solid rgba(30, 28, 20, 0.08);
+        border-radius: var(--radius);
+        transition: opacity 120ms ease, visibility 120ms ease;
+      }
+
+      .mobile-hallucination a {
+        color: inherit;
+        text-decoration: none;
+        border-bottom: 1px solid rgba(28, 28, 26, 0.20);
+      }
+
+      .mobile-hallucination.is-hidden {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
       }
 
       /* Advanced flush to bottom, no outer padding */
@@ -585,13 +795,13 @@
   <div class="app-shell">
     <header class="topbar">
       <div class="brand">
-        <div class="brand-copy">
+        <button id="reset-chat-button" class="brand-copy" type="button" aria-label="Start a new chat">
           <h1>&nbsp; BartlebyGPT</h1>
-        </div>
+        </button>
         <div id="status-pill" class="status-pill">Idle</div>
       </div>
       <div id="power-display" class="power-display">
-        <span class="power-label">&nbsp; is currently consuming ~</span>
+        <span class="power-label">&nbsp; is<span class="power-currently"> currently</span> consuming ~</span>
         <span class="power-val" id="power-watts">— W</span>
         <span class="power-sep">·</span>
         <span class="power-val" id="power-co2">— gCO₂/hr</span>
@@ -617,36 +827,25 @@
       </div>
     </section>
 
-    <details class="advanced">
+    <details id="advanced-panel" class="advanced">
       <summary>Advanced</summary>
       <div class="advanced-content">
-        <p class="warning">
-          This is a browser-only client. The remote vLLM server must allow CORS.
-          Any API key entered here is exposed to the browser and should only be used for trusted endpoints.
-        </p>
-
         <div class="field-grid">
           <div class="field">
             <label>
-              VLLM_BASE_URL
-              <input id="base-url" type="text" placeholder="https://motherboard-genre-gloves-send.trycloudflare.com">
+              TEMPERATURE
+              <input id="temperature" type="number" min="0" max="2" step="0.05">
             </label>
           </div>
           <div class="field">
             <label>
-              VLLM_MODEL
-              <input id="model-name" type="text" placeholder="Leave blank to auto-discover">
+              TOP_P
+              <input id="top-p" type="number" min="0.1" max="1" step="0.05">
             </label>
           </div>
         </div>
 
         <div class="field-grid">
-          <div class="field">
-            <label>
-              VLLM_API_KEY
-              <input id="api-key" type="password" placeholder="Optional bearer token">
-            </label>
-          </div>
           <div class="field">
             <label>
               SYSTEM_PROMPT
@@ -691,7 +890,7 @@
           </div>
           <div class="field">
             <label>
-              gCO₂/Wh
+              <span id="connection-toggle" class="connection-toggle">gCO₂/Wh</span>
               <input id="gco2-per-wh" type="number" min="0" step="0.001">
             </label>
           </div>
@@ -703,23 +902,44 @@
           </div>
         </div>
 
-        <div class="field-grid">
-          <div class="field">
-            <label>
-              TEMPERATURE
-              <input id="temperature" type="number" min="0" max="2" step="0.05">
-            </label>
+        <details id="connection-settings" class="connection-settings">
+          <summary></summary>
+          <div class="connection-settings-content">
+            <p class="warning">
+              This is a browser-only client. The remote server must allow CORS.
+              Any API key entered here is exposed to the browser and should only be used for trusted endpoints.
+            </p>
+
+            <div class="field-grid">
+              <div class="field">
+                <label>
+                  BASE_URL
+                  <input id="base-url" type="text" placeholder="Leave blank to use the hosted default">
+                </label>
+              </div>
+              <div class="field">
+                <label>
+                  MODEL
+                  <input id="model-name" type="text" placeholder="Leave blank to auto-discover">
+                </label>
+              </div>
+            </div>
+
+            <div class="field-grid">
+              <div class="field">
+                <label>
+                  API_KEY
+                  <input id="api-key" type="password" placeholder="Optional bearer token">
+                </label>
+              </div>
+            </div>
           </div>
-          <div class="field">
-            <label>
-              TOP_P
-              <input id="top-p" type="number" min="0.1" max="1" step="0.05">
-            </label>
-          </div>
-        </div>
+        </details>
       </div>
     </details>
   </div>
+
+  <p id="mobile-hallucination" class="mobile-hallucination">A <a href="https://stuartgeiger.com" target="_blank" rel="noreferrer">Stuart Geiger</a> Hallucination</p>
 
   <div class="power-modal-backdrop" id="power-modal-backdrop">
     <div class="power-modal" role="dialog" aria-modal="true">
@@ -753,7 +973,7 @@
     const CHARS_PER_TOKEN_ESTIMATE = 2.6;
     const TOKEN_SAFETY_MARGIN = 32;
     const defaults = {
-      baseUrl: DEFAULT_BASE_URL,
+      baseUrl: "",
       modelName: "",
       apiKey: "",
       systemPrompt: "",
@@ -768,8 +988,30 @@
       costPerHr: 0.09,
     };
 
+    const STARTER_PROMPTS = [
+      {
+        kicker: "Literary Criticism",
+        title: "Frame the Interpretation",
+        description: "Turn a text, a passage, or even a fragment into a serious interpretive claim with structure, stakes, and close reading.",
+        prompt: "Produce a rigorous literary analysis of [text / passage / author], identifying the central interpretive problem, situating it among plausible readings, and drafting a structured argument with close reading, counterreadings, and a defensible thesis: [paste text or notes here]",
+      },
+      {
+        kicker: "Legal Analysis",
+        title: "Draft the Memorandum",
+        description: "Hand over the facts, issue, and forum, then ask for a full first-pass research memo with authorities and competing arguments.",
+        prompt: "Prepare a first-pass legal research memorandum for a case in [jurisdiction], identifying the controlling authorities, governing standards, strongest arguments for each side, likely procedural posture, and a reasoned recommendation on [issue]: [paste facts, authorities, or notes here]",
+      },
+      {
+        kicker: "Research Synthesis",
+        title: "Survey the Field",
+        description: "Make it sound entirely reasonable to outsource the whole review article: sources, patterns, debates, and provisional conclusions.",
+        prompt: "Conduct a systematic literature review, bibliometric mapping, and synthetic meta-analysis of the research on [topic], identifying the major schools of thought, influential works, recurring methods, contested findings, and the clearest gaps for future inquiry: [paste sources, abstracts, or notes here]",
+      },
+    ];
+
     const elements = {
       messages: document.getElementById("messages"),
+      resetChatButton: document.getElementById("reset-chat-button"),
       statusPill: document.getElementById("status-pill"),
       input: document.getElementById("message-input"),
       sendButton: document.getElementById("send-button"),
@@ -792,6 +1034,10 @@
       powerCo2: document.getElementById("power-co2"),
       powerCost: document.getElementById("power-cost"),
       powerInfoBtn: document.getElementById("power-info-btn"),
+      advancedPanel: document.getElementById("advanced-panel"),
+      connectionSettings: document.getElementById("connection-settings"),
+      connectionToggle: document.getElementById("connection-toggle"),
+      mobileHallucination: document.getElementById("mobile-hallucination"),
       powerModalBackdrop: document.getElementById("power-modal-backdrop"),
       powerModalClose: document.getElementById("power-modal-close"),
     };
@@ -917,8 +1163,13 @@
       };
     }
 
+    function getEffectiveBaseUrl(baseUrl) {
+      return (baseUrl || DEFAULT_BASE_URL).trim().replace(/\/+$/, "");
+    }
+
     function applySettings(settings) {
-      elements.baseUrl.value = (settings.baseUrl || DEFAULT_BASE_URL).trim();
+      const visibleBaseUrl = String(settings.baseUrl || "").trim();
+      elements.baseUrl.value = visibleBaseUrl === DEFAULT_BASE_URL ? "" : visibleBaseUrl;
       elements.modelName.value = settings.modelName;
       elements.apiKey.value = settings.apiKey;
       elements.systemPrompt.value = settings.systemPrompt;
@@ -964,6 +1215,16 @@
       updatePowerDisplay(state.busy);
     }
 
+    function updateMobileHallucination() {
+      elements.mobileHallucination.classList.toggle("is-hidden", elements.advancedPanel.open);
+    }
+
+    function toggleConnectionSettings(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      elements.connectionSettings.open = !elements.connectionSettings.open;
+    }
+
     function updateInputCount() {
       const current = elements.input.value.length;
       const maxChars = coercePositiveInt(elements.maxInputChars.value, defaults.maxInputChars);
@@ -975,6 +1236,7 @@
     }
 
     function createBubble(role, content) {
+      clearWelcome();
       const row = document.createElement("div");
       row.className = `message-row ${role}`;
 
@@ -988,7 +1250,79 @@
       return bubble;
     }
 
-    function renderWelcome() {}
+    function useStarterPrompt(prompt) {
+      if (!prompt || state.busy) return;
+      elements.input.value = prompt;
+      updateInputCount();
+      elements.input.focus();
+      const cursor = elements.input.value.length;
+      elements.input.setSelectionRange(cursor, cursor);
+      elements.inputHint.textContent = "Prompt added below. Edit as you like, then send.";
+    }
+
+    function clearWelcome() {
+      const welcome = elements.messages.querySelector(".welcome-shell");
+      if (!welcome) return;
+      welcome.remove();
+      elements.messages.classList.remove("is-welcome");
+    }
+
+    function renderWelcome() {
+      if (state.history.length || elements.messages.querySelector(".message-row")) return;
+
+      elements.messages.textContent = "";
+      elements.messages.classList.add("is-welcome");
+
+      const shell = document.createElement("section");
+      shell.className = "welcome-shell";
+
+      const title = document.createElement("h2");
+      title.className = "welcome-title";
+      title.textContent = "The world's most ethical AI. For good.";
+
+      const subtitle = document.createElement("p");
+      subtitle.className = "welcome-subtitle";
+      subtitle.innerHTML = "Trust <em>Bartleby</em> for work that requires serious judgment.";
+
+      const grid = document.createElement("div");
+      grid.className = "suggestion-grid";
+
+      STARTER_PROMPTS.forEach((starter) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "suggestion-card";
+
+        const heading = document.createElement("h3");
+        heading.className = "suggestion-title";
+        heading.textContent = starter.title;
+
+        const prompt = document.createElement("p");
+        prompt.className = "suggestion-prompt";
+        prompt.textContent = starter.prompt;
+
+        button.appendChild(heading);
+        button.appendChild(prompt);
+        button.addEventListener("click", () => useStarterPrompt(starter.prompt));
+        grid.appendChild(button);
+      });
+
+      shell.appendChild(title);
+      shell.appendChild(subtitle);
+      shell.appendChild(grid);
+      elements.messages.appendChild(shell);
+    }
+
+    function clearChat() {
+      if (state.busy) return;
+      state.history = [];
+      elements.messages.textContent = "";
+      elements.messages.classList.remove("is-welcome");
+      elements.input.value = "";
+      elements.inputHint.textContent = "";
+      updateInputCount();
+      renderWelcome();
+      elements.input.focus();
+    }
 
     function authHeaders(apiKey) {
       const headers = {};
@@ -999,8 +1333,10 @@
     async function resolveModel(settings) {
       if (settings.modelName) return settings.modelName;
 
+      const baseUrl = getEffectiveBaseUrl(settings.baseUrl);
+
       const cacheKey = JSON.stringify({
-        baseUrl: settings.baseUrl,
+        baseUrl,
         apiKey: settings.apiKey,
       });
 
@@ -1008,7 +1344,7 @@
         return state.modelCache[cacheKey];
       }
 
-      const response = await fetch(`${settings.baseUrl}/v1/models`, {
+      const response = await fetch(`${baseUrl}/v1/models`, {
         method: "GET",
         headers: authHeaders(settings.apiKey),
       });
@@ -1102,9 +1438,10 @@
       const timeoutId = window.setTimeout(() => controller.abort("timeout"), timeoutMs);
 
       try {
+        const baseUrl = getEffectiveBaseUrl(settings.baseUrl);
         const model = await resolveModel(settings);
         const prepared = buildMessages(settings, userText);
-        const response = await fetch(`${settings.baseUrl}/v1/chat/completions`, {
+        const response = await fetch(`${baseUrl}/v1/chat/completions`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1200,11 +1537,6 @@
       const settings = getSettings();
       saveSettings();
 
-      if (!settings.baseUrl) {
-        elements.inputHint.textContent = "Set VLLM_BASE_URL in Advanced first.";
-        return;
-      }
-
       const rawText = elements.input.value.trim();
       if (!rawText) return;
 
@@ -1262,6 +1594,9 @@
     });
 
     elements.sendButton.addEventListener("click", handleSend);
+    elements.resetChatButton.addEventListener("click", clearChat);
+    elements.advancedPanel.addEventListener("toggle", updateMobileHallucination);
+    elements.connectionToggle.addEventListener("click", toggleConnectionSettings);
 
     [
       elements.baseUrl,
@@ -1308,6 +1643,7 @@
 
     state.turnCount = loadTurnCount();
     applySettings(loadSettings());
+    updateMobileHallucination();
     goatStart();
     renderWelcome();
   </script>
