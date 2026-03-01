@@ -106,6 +106,24 @@
       opacity: 0.82;
     }
 
+    .power-display.is-active #power-watts,
+    .power-display.is-active #power-co2 {
+      color: #9d2f2f;
+      animation: power-alert 900ms ease-in-out infinite;
+    }
+
+    @keyframes power-alert {
+      0%,
+      100% {
+        color: #7f2626;
+        opacity: 0.78;
+      }
+      50% {
+        color: #c44747;
+        opacity: 1;
+      }
+    }
+
     .power-display .power-sep {
       opacity: 0.35;
       font-style: normal;
@@ -807,6 +825,8 @@
         <span class="power-val" id="power-co2">— gCO₂/hr</span>
         <span class="power-sep">·</span>
         <span class="power-val" id="power-cost">—/hr</span>
+        <span class="power-sep">·</span>
+        <span class="power-val" id="power-active-count">— active</span>
         <button class="power-info-btn" id="power-info-btn" aria-label="Explain these figures">?</button>
       </div>
       <p class="topbar-note">A <a href="https://stuartgeiger.com" target="_blank" rel="noreferrer">Stuart Geiger</a> Hallucination</p>
@@ -945,9 +965,9 @@
     <div class="power-modal" role="dialog" aria-modal="true">
       <button class="power-modal-close" id="power-modal-close" aria-label="Close">×</button>
       <h2>About these figures</h2>
-      <p>These are estimates for the server powering BartlebyGPT, which is currently deployed on an RTX A4000 in TierPoint's Spokane, WA data center. The server can generate up to 15 simultaneous conversations, so these figures are the cost to serve all users. 
-      <p><strong>Watts</strong> is the estimated total facility draw for this server — GPU, CPU, RAM, storage, fans, and the data center's power distribution and cooling overhead (PUE ~1.35). Idle reflects background system load; active reflects full GPU utilization during inference.</p>
-      <p><strong>gCO₂/Whr</strong> is the direct carbon cost of the electricity consumed — wattage × grid carbon intensity. Avista Power serves Spokane with a ~65% renewable power mix, with an estimated emissions factor of ~0.3 g/Wh. This does not include emissions generated in manufacturing or end-of-life costs for the hardware, or private jets to lobby politicians.</p>
+      <p>These figures are tied to the live server powering BartlebyGPT, currently deployed on an RTX A4000 in TierPoint's Spokane, WA data center.</p>
+      <p><strong>Watts</strong> is shown as a 300W baseline for the rest of the machine, plus a concurrent-share of the live GPU draw sampled from <code>nvidia-smi</code>, with extra cooling overhead scaling upward as GPU power rises.</p>
+      <p><strong>gCO₂/Whr</strong> is the direct carbon cost of that displayed GPU draw — wattage × grid carbon intensity. Avista Power serves Spokane with a ~65% renewable power mix, with an estimated emissions factor of ~0.3 g/Wh. This still does not include emissions generated in manufacturing or end-of-life costs for the hardware, or private jets to lobby politicians.</p>
       <p><strong>$/hr</strong> is the cost to rent this GPU from the data center. We accrue this cost whenever it is running, idle or not.</p>
       <p>All three parameters are adjustable under <em>Advanced</em>.</p>
     </div>
@@ -968,7 +988,7 @@
   <script>
     const SETTINGS_KEY = "bartleby-remote-settings-v1";
     const TURN_COUNT_KEY = "bartleby-remote-turn-count-v1";
-    const DEFAULT_BASE_URL = "https://motherboard-genre-gloves-send.trycloudflare.com";
+    const DEFAULT_BASE_URL = "https://api.bartlebygpt.org";
     const MODEL_MAX_CONTEXT_TOKENS = 2048;
     const CHARS_PER_TOKEN_ESTIMATE = 2.6;
     const TOKEN_SAFETY_MARGIN = 32;
@@ -1030,9 +1050,11 @@
       wattsActive: document.getElementById("watts-active"),
       gco2PerWh: document.getElementById("gco2-per-wh"),
       costPerHr: document.getElementById("cost-per-hr"),
+      powerDisplay: document.getElementById("power-display"),
       powerWatts: document.getElementById("power-watts"),
       powerCo2: document.getElementById("power-co2"),
       powerCost: document.getElementById("power-cost"),
+      powerActiveCount: document.getElementById("power-active-count"),
       powerInfoBtn: document.getElementById("power-info-btn"),
       advancedPanel: document.getElementById("advanced-panel"),
       connectionSettings: document.getElementById("connection-settings"),
@@ -1048,6 +1070,11 @@
       modelCache: {},
       turnCount: 0,
       goatStartSent: false,
+      powerTelemetry: null,
+      powerTelemetryAvailable: false,
+      powerTelemetryInFlight: false,
+      powerTelemetryTimer: null,
+      powerTelemetryMode: "",
     };
 
     function gcReady() {
@@ -1164,7 +1191,20 @@
     }
 
     function getEffectiveBaseUrl(baseUrl) {
-      return (baseUrl || DEFAULT_BASE_URL).trim().replace(/\/+$/, "");
+      const candidate = String(baseUrl || "").trim().replace(/\/+$/, "");
+      if (!candidate) {
+        return DEFAULT_BASE_URL;
+      }
+
+      try {
+        const parsed = new URL(candidate);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+          throw new Error("Unsupported protocol");
+        }
+        return `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, "");
+      } catch (_err) {
+        return DEFAULT_BASE_URL;
+      }
     }
 
     function applySettings(settings) {
@@ -1196,13 +1236,85 @@
       return Number.isFinite(parsed) ? parsed : fallback;
     }
 
-    function updatePowerDisplay(active) {
+    function renderFallbackPowerDisplay(active) {
       const settings = getSettings();
       const watts = active ? settings.wattsActive : settings.wattsIdle;
       const co2PerHr = watts * settings.gco2PerWh;
       elements.powerWatts.textContent = `${Math.round(watts)} W`;
       elements.powerCo2.textContent = `${co2PerHr.toFixed(1)} gCO₂/hr`;
       elements.powerCost.textContent = `$${settings.costPerHr.toFixed(2)}/hr`;
+      elements.powerActiveCount.textContent = active ? "1 active" : "0 active";
+      elements.powerDisplay.classList.toggle("is-active", !!active);
+    }
+
+    function setPowerTelemetryMode(mode, detail, payload) {
+      if (state.powerTelemetryMode === mode) return;
+      state.powerTelemetryMode = mode;
+      if (detail) {
+        console.warn(`[power] ${detail}`, payload || "");
+      }
+    }
+
+    function renderTelemetryPowerDisplay(payload) {
+      const settings = getSettings();
+      const watts = Number.parseFloat(String(payload.estimated_total_watts));
+      const running = Number.parseFloat(String(payload.requests_running));
+      const share = Number.parseFloat(String(payload.cost_share_fraction));
+      const baseSystemWatts = Number.parseFloat(String(payload.base_system_watts));
+      const attributedGpuWatts = Number.parseFloat(String(payload.attributed_gpu_watts));
+      const measuredGpuWatts = Number.parseFloat(String(payload.measured_gpu_watts));
+      const serverTotalWatts = Number.parseFloat(String(payload.estimated_total_server_watts));
+      const activeCount = Number.isFinite(running) ? Math.max(0, Math.round(running)) : 0;
+      const derivedBaseSystemWatts = Number.isFinite(baseSystemWatts) ? baseSystemWatts : 300;
+      let derivedGpuShare = attributedGpuWatts;
+      if (!Number.isFinite(derivedGpuShare) && Number.isFinite(measuredGpuWatts)) {
+        derivedGpuShare = activeCount > 0 ? measuredGpuWatts / activeCount : measuredGpuWatts;
+      }
+      const legacyWatts = Number.isFinite(derivedGpuShare)
+        ? derivedBaseSystemWatts + (derivedGpuShare * 1.35)
+        : NaN;
+      const displayWatts = Number.isFinite(watts)
+        ? watts
+        : (Number.isFinite(legacyWatts) ? legacyWatts : settings.wattsActive);
+      const derivedServerTotalWatts = Number.isFinite(serverTotalWatts)
+        ? serverTotalWatts
+        : (Number.isFinite(measuredGpuWatts) ? derivedBaseSystemWatts + (measuredGpuWatts * 1.35) : NaN);
+      const derivedShare = Number.isFinite(derivedServerTotalWatts) && derivedServerTotalWatts > 0
+        ? Math.max(0, Math.min(1, displayWatts / derivedServerTotalWatts))
+        : 1;
+      const displayShare = Number.isFinite(share) ? Math.max(0, Math.min(1, share)) : derivedShare;
+      const co2PerHr = displayWatts * settings.gco2PerWh;
+      const displayCost = settings.costPerHr * displayShare;
+
+      if (Number.isFinite(watts)) {
+        setPowerTelemetryMode("native", "");
+      } else if (Number.isFinite(legacyWatts)) {
+        setPowerTelemetryMode(
+          "legacy-derived",
+          "Telemetry payload is missing estimated_total_watts; deriving display watts from older payload fields.",
+          payload
+        );
+      } else {
+        setPowerTelemetryMode(
+          "legacy-fallback",
+          "Telemetry payload is missing usable watt fields; falling back to local configured active watts.",
+          payload
+        );
+      }
+
+      elements.powerWatts.textContent = `${Math.round(displayWatts)} W`;
+      elements.powerCo2.textContent = `${co2PerHr.toFixed(1)} gCO₂/hr`;
+      elements.powerCost.textContent = `$${displayCost.toFixed(2)}/hr`;
+      elements.powerActiveCount.textContent = `${activeCount} active`;
+      elements.powerDisplay.classList.toggle("is-active", activeCount > 0);
+    }
+
+    function updatePowerDisplay(active) {
+      if (state.powerTelemetryAvailable && state.powerTelemetry) {
+        renderTelemetryPowerDisplay(state.powerTelemetry);
+        return;
+      }
+      renderFallbackPowerDisplay(active);
     }
 
     function setBusy(next, label) {
@@ -1213,6 +1325,51 @@
       const showStatus = text && text.toLowerCase() !== "idle";
       elements.statusPill.classList.toggle("is-visible", showStatus);
       updatePowerDisplay(state.busy);
+    }
+
+    async function refreshPowerTelemetry() {
+      if (state.powerTelemetryInFlight) return;
+      state.powerTelemetryInFlight = true;
+
+      try {
+        const settings = getSettings();
+        const baseUrl = getEffectiveBaseUrl(settings.baseUrl);
+        const response = await fetch(`${baseUrl}/telemetry/power`, {
+          method: "GET",
+          headers: authHeaders(settings.apiKey),
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error(`Telemetry error: ${response.status}`);
+        }
+
+        const payload = await response.json();
+        state.powerTelemetry = payload;
+        state.powerTelemetryAvailable = true;
+        updatePowerDisplay(state.busy);
+      } catch (err) {
+        if (state.powerTelemetryMode !== "fetch-error") {
+          const message = err instanceof Error ? err.message : String(err || "unknown error");
+          console.warn(`[power] Telemetry fetch failed; using local fallback. ${message}`);
+        }
+        state.powerTelemetryMode = "fetch-error";
+        state.powerTelemetryAvailable = false;
+        updatePowerDisplay(state.busy);
+      } finally {
+        state.powerTelemetryInFlight = false;
+      }
+    }
+
+    function startPowerTelemetryPolling() {
+      if (state.powerTelemetryTimer) {
+        window.clearInterval(state.powerTelemetryTimer);
+      }
+
+      refreshPowerTelemetry();
+      state.powerTelemetryTimer = window.setInterval(() => {
+        refreshPowerTelemetry();
+      }, 1000);
     }
 
     function updateMobileHallucination() {
@@ -1617,6 +1774,11 @@
       element.addEventListener("blur", saveSettings);
     });
 
+    [elements.baseUrl, elements.apiKey].forEach((el) => {
+      el.addEventListener("change", refreshPowerTelemetry);
+      el.addEventListener("blur", refreshPowerTelemetry);
+    });
+
     [elements.wattsIdle, elements.wattsActive, elements.gco2PerWh, elements.costPerHr].forEach((el) => {
       el.addEventListener("input", () => updatePowerDisplay(state.busy));
     });
@@ -1625,7 +1787,7 @@
       elements.powerModalBackdrop.classList.add("is-open");
     });
 
-    document.getElementById("power-display").addEventListener("click", (e) => {
+    elements.powerDisplay.addEventListener("click", (e) => {
       if (e.target !== elements.powerInfoBtn) {
         elements.powerModalBackdrop.classList.add("is-open");
       }
@@ -1644,6 +1806,7 @@
     state.turnCount = loadTurnCount();
     applySettings(loadSettings());
     updateMobileHallucination();
+    startPowerTelemetryPolling();
     goatStart();
     renderWelcome();
   </script>
