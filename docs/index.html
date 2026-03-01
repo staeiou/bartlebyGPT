@@ -76,11 +76,16 @@
       border-bottom: 1px solid var(--rule);
     }
 
+    .active-count-header {
+      display: none;
+    }
+
     .power-display {
       display: flex;
       align-items: baseline;
       justify-content: center;
       gap: 5px;
+      padding-left: 5px;
       flex-wrap: wrap;
       font-family: "EB Garamond", Georgia, serif;
       font-size: 15px;
@@ -176,7 +181,7 @@
       background: var(--panel);
       border: 1px solid var(--panel-border);
       border-radius: 3px;
-      max-width: 480px;
+      max-width: 730px;
       width: calc(100% - 40px);
       max-height: calc(100dvh - 40px);
       overflow-y: auto;
@@ -227,6 +232,7 @@
       align-items: baseline;
       gap: 9px;
       min-width: 0;
+      margin-left: -5px;
     }
 
     .brand-copy {
@@ -634,6 +640,63 @@
       line-height: 1.6;
     }
 
+    /* Tablet (portrait + landscape): 2-col suggestion grid, tighter welcome shell */
+    @media (max-width: 1020px) {
+      .suggestion-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .suggestion-card {
+        min-height: 120px;
+      }
+
+      .welcome-shell {
+        width: min(100%, 760px);
+      }
+    }
+
+    /* Landscape tablet: power bar too wide for 3-col header, wrap it to row 2 */
+    @media (max-width: 1020px) {
+      .topbar {
+        grid-template-columns: 1fr auto;
+        grid-template-rows: auto auto;
+        align-items: baseline;
+        gap: 2px 10px;
+      }
+
+      .brand {
+        grid-column: 1;
+        grid-row: 1;
+      }
+
+      .topbar-note {
+        display: none;
+      }
+
+      #power-display {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+      }
+
+      .active-count-header {
+        display: block;
+        grid-column: 2;
+        grid-row: 1;
+        align-self: center;
+        font-size: 13px;
+        color: var(--muted);
+        white-space: nowrap;
+        text-align: right;
+      }
+
+      #power-active-count,
+      .power-sep:has(+ #power-active-count) {
+        display: none;
+      }
+    }
+
     @media (max-width: 760px) {
       .app-shell {
         padding: 8px 2px 0 2px;
@@ -728,12 +791,29 @@
         display: none;
       }
 
+      .active-count-header {
+        display: block;
+        grid-column: 2;
+        grid-row: 1;
+        align-self: center;
+        font-size: 13px;
+        color: var(--muted);
+        white-space: nowrap;
+        text-align: right;
+      }
+
+      #power-active-count,
+      #power-active-count + .power-sep,
+      .power-sep:has(+ #power-active-count) {
+        display: none;
+      }
+
       .composer {
         grid-template-columns: 1fr;
       }
 
       .composer textarea {
-        height: calc(1lh + 0.5em);
+        height: calc(2lh + 0.5em);
         min-height: 0 !important;
         max-height: unset;
         resize: none;
@@ -818,6 +898,7 @@
         </button>
         <div id="status-pill" class="status-pill">Idle</div>
       </div>
+      <span id="active-count-header" class="active-count-header"></span>
       <div id="power-display" class="power-display">
         <span class="power-label">&nbsp; is<span class="power-currently"> currently</span> consuming ~</span>
         <span class="power-val" id="power-watts">— W</span>
@@ -965,10 +1046,10 @@
     <div class="power-modal" role="dialog" aria-modal="true">
       <button class="power-modal-close" id="power-modal-close" aria-label="Close">×</button>
       <h2>About these figures</h2>
-      <p>These figures are tied to the live server powering BartlebyGPT, currently deployed on an RTX A4000 in TierPoint's Spokane, WA data center. We are renting 1/4th of a rack server that has 4 GPUs, which directly pulls about 1.2 kW when idle and 2.2 kW when active. The cooling and other infrastructure requires about 35% more energy to run.  </p>
-      <p><strong>Watts</strong> is shown as a 300W baseline for the rest of the machine, plus a concurrent-share of the live GPU's actual power consumption in Watts, with extra cooling overhead scaling upward as GPU power rises.</p>
-      <p><strong>gCO₂/hr</strong> is the direct carbon cost of that displayed GPU draw — wattage × grid carbon intensity. Avista Power serves Spokane with a ~65% renewable power mix, with an estimated emissions factor of ~0.3 g/Wh. This still does not include emissions generated in manufacturing or end-of-life costs for the hardware, or private jets to lobby politicians.</p>
-      <p><strong>$/hr</strong> is the cost to rent this GPU from the data center. We accrue this cost whenever it is running, idle or not.</p>
+      <p>These figures reflect the live power consumption of BartlebyGPT's server, which runs on one GPU (RTX A4000) in a 4-GPU server at <a href="https://www.tierpoint.com/data-centers/washington/spokane/">TierPoint's Spokane, WA data center</a>. The server directly pulls ~1.2KW when idle and ~2.2KW when at full load, but we are only renting 1/4th of it. This single GPU and 1/4th of a server can generate around 15 replies in parallel at a time.</p>
+      <p><strong>Watts</strong> is the estimated total draw for all current BartlebyGPT users combined: our 300W base 1/4th share of the server, plus the GPU's actual live measured wattage. The RTX A4000 directly pulls ~15W when idle and ~150W at full load, but also generates heat and network traffic. The server + GPU load is multiplied by 1.35× to account for energy costs in cooling, networking, and other data center infrastructure overhead (<a href="https://en.wikipedia.org/wiki/Power_usage_effectiveness">PUE factor</a>).</p>
+      <p><strong>gCO₂/hr</strong> is the estimated carbon cost of that total estimated power draw: watts × grid carbon intensity. Avista Power serves Spokane with <a href="https://www.myavista.com/about-us/about-our-energy-mix">a ~60% renewable power mix</a>, giving an estimated <a href="https://www.epa.gov/energy/greenhouse-gas-equivalencies-calculator">emissions factor of ~0.3 gCO₂/Wh</a>, although this can be higher if the data center burns its own fossil fuel generators when grid capacity is low. This does not include emissions from hardware manufacturing, end-of-life disposal, data center workers' commutes, or private jets to lobby politicians about data center regulations.</p>
+      <p><strong>$/hr</strong> is our rental cost for this GPU and our quarter-server share, accrued continuously whether idle or busy, shared across all users of the site.</p>
       <p>All three parameters are adjustable under <em>Advanced</em>.</p>
     </div>
   </div>
@@ -1055,6 +1136,7 @@
       powerCo2: document.getElementById("power-co2"),
       powerCost: document.getElementById("power-cost"),
       powerActiveCount: document.getElementById("power-active-count"),
+      activeCountHeader: document.getElementById("active-count-header"),
       powerInfoBtn: document.getElementById("power-info-btn"),
       advancedPanel: document.getElementById("advanced-panel"),
       connectionSettings: document.getElementById("connection-settings"),
@@ -1243,7 +1325,9 @@
       elements.powerWatts.textContent = `${Math.round(watts)} W`;
       elements.powerCo2.textContent = `${co2PerHr.toFixed(1)} gCO₂/hr`;
       elements.powerCost.textContent = `$${settings.costPerHr.toFixed(2)}/hr`;
-      elements.powerActiveCount.textContent = active ? "1 active" : "0 active";
+      const fallbackCountText = active ? "generating 1 replies" : "";
+      elements.powerActiveCount.textContent = fallbackCountText;
+      elements.activeCountHeader.textContent = fallbackCountText;
       elements.powerDisplay.classList.toggle("is-active", !!active);
     }
 
@@ -1266,23 +1350,15 @@
       const serverTotalWatts = Number.parseFloat(String(payload.estimated_total_server_watts));
       const activeCount = Number.isFinite(running) ? Math.max(0, Math.round(running)) : 0;
       const derivedBaseSystemWatts = Number.isFinite(baseSystemWatts) ? baseSystemWatts : 300;
-      let derivedGpuShare = attributedGpuWatts;
-      if (!Number.isFinite(derivedGpuShare) && Number.isFinite(measuredGpuWatts)) {
-        derivedGpuShare = activeCount > 0 ? measuredGpuWatts / activeCount : measuredGpuWatts;
-      }
-      const legacyWatts = Number.isFinite(derivedGpuShare)
-        ? derivedBaseSystemWatts + (derivedGpuShare * 1.35)
+      // Legacy path: old server has no estimated_total_watts; derive using correct formula (base + measured) * PUE
+      const legacyWatts = Number.isFinite(measuredGpuWatts)
+        ? (derivedBaseSystemWatts + measuredGpuWatts) * 1.35
         : NaN;
       const displayWatts = Number.isFinite(watts)
         ? watts
         : (Number.isFinite(legacyWatts) ? legacyWatts : settings.wattsActive);
-      const derivedServerTotalWatts = Number.isFinite(serverTotalWatts)
-        ? serverTotalWatts
-        : (Number.isFinite(measuredGpuWatts) ? derivedBaseSystemWatts + (measuredGpuWatts * 1.35) : NaN);
-      const derivedShare = Number.isFinite(derivedServerTotalWatts) && derivedServerTotalWatts > 0
-        ? Math.max(0, Math.min(1, displayWatts / derivedServerTotalWatts))
-        : 1;
-      const displayShare = Number.isFinite(share) ? Math.max(0, Math.min(1, share)) : derivedShare;
+      // cost_share_fraction from old server was per-request; override to 1.0 (show total cost)
+      const displayShare = 1.0;
       const co2PerHr = displayWatts * settings.gco2PerWh;
       const displayCost = settings.costPerHr * displayShare;
 
@@ -1305,7 +1381,9 @@
       elements.powerWatts.textContent = `${Math.round(displayWatts)} W`;
       elements.powerCo2.textContent = `${co2PerHr.toFixed(1)} gCO₂/hr`;
       elements.powerCost.textContent = `$${displayCost.toFixed(2)}/hr`;
-      elements.powerActiveCount.textContent = `${activeCount} active`;
+      const activeCountText = activeCount > 0 ? `generating ${activeCount} replies` : "";
+      elements.powerActiveCount.textContent = activeCountText;
+      elements.activeCountHeader.textContent = activeCountText;
       elements.powerDisplay.classList.toggle("is-active", activeCount > 0);
     }
 
@@ -1589,6 +1667,10 @@
       };
     }
 
+    function sleep(ms) {
+      return new Promise((resolve) => window.setTimeout(resolve, ms));
+    }
+
     async function streamCompletion(settings, assistantBubble, userText) {
       const controller = new AbortController();
       const timeoutMs = settings.requestTimeout * 1000;
@@ -1723,18 +1805,46 @@
 
       setBusy(true, "Streaming");
 
-      try {
-        const result = await streamCompletion(settings, assistantBubble, userText);
-        state.history.push({ role: "user", content: result.userText });
-        state.history.push({ role: "assistant", content: result.output });
-        gcCount("chat/response-complete", "Response complete");
-        countCompletedTurn();
-        elements.inputHint.textContent = result.wasTokenTrimmed
-          ? `Done. Input was trimmed to fit the ${MODEL_MAX_CONTEXT_TOKENS}-token context window.`
-          : "Done.";
-        setBusy(false, "Idle");
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Request failed.";
+      // Retry schedule:
+      // Attempts 1-3 (retries 1-3): silent, delays 1s / 2s / 4s
+      // Attempts 4-9 (retries 4-9): show "Server busy, retrying...", expo backoff 8s→16s→30s→30s→30s→30s
+      const SILENT_DELAYS = [1000, 2000, 4000];
+      const MAX_RETRIES = 9;
+      let attempt = 0;
+      let lastErr = null;
+
+      while (true) {
+        assistantBubble.textContent = "";
+        try {
+          const result = await streamCompletion(settings, assistantBubble, userText);
+          state.history.push({ role: "user", content: result.userText });
+          state.history.push({ role: "assistant", content: result.output });
+          gcCount("chat/response-complete", "Response complete");
+          countCompletedTurn();
+          elements.inputHint.textContent = result.wasTokenTrimmed
+            ? `Done. Input was trimmed to fit the ${MODEL_MAX_CONTEXT_TOKENS}-token context window.`
+            : "Done.";
+          setBusy(false, "Idle");
+          break;
+        } catch (err) {
+          lastErr = err;
+          attempt++;
+          if (attempt > MAX_RETRIES) break;
+
+          if (attempt <= 3) {
+            await sleep(SILENT_DELAYS[attempt - 1]);
+          } else {
+            const backoffIndex = attempt - 4; // 0-based, 0..5
+            const delay = Math.min(30000, 8000 * Math.pow(2, backoffIndex));
+            assistantBubble.textContent = "Server busy, retrying…";
+            elements.inputHint.textContent = "Server busy, retrying…";
+            await sleep(delay);
+          }
+        }
+      }
+
+      if (lastErr && attempt > MAX_RETRIES) {
+        const message = lastErr instanceof Error ? lastErr.message : "Request failed.";
         assistantBubble.textContent = `Error: ${message}`;
         elements.inputHint.textContent = message;
         gcCount("chat/response-error", "Response error");
