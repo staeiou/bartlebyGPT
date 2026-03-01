@@ -5,18 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BartlebyGPT</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,700;1,400;1,500;1,700&display=swap');
+
     :root {
-      --bg: #f2efe8;
-      --panel: rgba(255, 255, 255, 0.88);
-      --panel-border: rgba(77, 77, 77, 0.14);
-      --text: #1f1d19;
-      --muted: #66605a;
-      --accent: #c95f17;
-      --accent-dark: #a44808;
-      --user-bg: #f6ead8;
-      --bot-bg: #ffffff;
-      --shadow: 0 10px 28px rgba(53, 40, 27, 0.06);
-      --radius: 4px;
+      --bg: #e8e4d9;
+      --panel: rgba(238, 234, 224, 0.96);
+      --panel-border: rgba(30, 28, 20, 0.11);
+      --text: #1c1a14;
+      --muted: #7a756a;
+      --accent: #2e2c24;
+      --accent-dim: #4a4840;
+      --user-bg: #ddd9cc;
+      --bot-bg: #efebd8;
+      --shadow: 0 6px 22px rgba(10, 10, 8, 0.09);
+      --radius: 2px;
+      --rule: rgba(30, 30, 28, 0.09);
     }
 
     * {
@@ -29,12 +32,15 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
+      /* Cold window light, the grey of a November counting house */
       background:
-        radial-gradient(circle at top right, rgba(201, 95, 23, 0.10), transparent 34%),
-        radial-gradient(circle at bottom left, rgba(90, 111, 84, 0.08), transparent 28%),
-        linear-gradient(180deg, #f7f4ee 0%, var(--bg) 100%);
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.038'/%3E%3C/svg%3E"),
+        radial-gradient(ellipse 80% 50% at 50% 0%, rgba(168, 162, 140, 0.14), transparent 60%),
+        linear-gradient(180deg, #ece8dc 0%, #e4dfd0 100%);
       color: var(--text);
-      font-family: "Avenir Next", "Helvetica Neue", "Segoe UI", sans-serif;
+      font-family: "EB Garamond", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      font-size: 19px;
+      font-weight: 500;
     }
 
     body {
@@ -55,17 +61,139 @@
       background: var(--panel);
       border: 1px solid var(--panel-border);
       border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(8px);
+      box-shadow: none;
     }
 
     .topbar {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
       align-items: end;
       column-gap: 18px;
       row-gap: 4px;
-      padding: 2px 0 4px;
+      padding: 2px 0 6px;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .power-display {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 5px;
+      flex-wrap: wrap;
+      font-family: "EB Garamond", Georgia, serif;
+      font-size: 15px;
+      font-weight: 500;
+      font-style: italic;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .power-display .power-label {
+      font-style: italic;
+      font-weight: 500;
+      font-size: 17px;
+    }
+
+    .power-display .power-val {
+      font-style: normal;
+      color: var(--text);
+      opacity: 0.82;
+    }
+
+    .power-display .power-sep {
+      opacity: 0.35;
+      font-style: normal;
+    }
+
+    .power-info-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: 1px solid rgba(30, 28, 20, 0.30);
+      background: transparent;
+      font-family: "EB Garamond", Georgia, serif;
+      font-size: 11px;
+      font-style: normal;
+      font-weight: 700;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+      vertical-align: middle;
+      margin-left: 2px;
+      transition: background 120ms, color 120ms;
+    }
+
+    .power-info-btn:hover {
+      background: var(--accent);
+      color: #ccccc8;
+      border-color: var(--accent);
+    }
+
+    /* Modal overlay */
+    .power-modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(20, 18, 12, 0.45);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .power-modal-backdrop.is-open {
+      display: flex;
+    }
+
+    .power-modal {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 3px;
+      max-width: 480px;
+      width: calc(100% - 40px);
+      padding: 28px 30px 24px;
+      position: relative;
+      font-family: "EB Garamond", Georgia, serif;
+      font-size: 17px;
+      font-weight: 500;
+      line-height: 1.65;
+      color: var(--text);
+    }
+
+    .power-modal h2 {
+      margin: 0 0 14px;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .power-modal p {
+      margin: 0 0 12px;
+    }
+
+    .power-modal p:last-of-type {
+      margin-bottom: 0;
+    }
+
+    .power-modal-close {
+      position: absolute;
+      top: 14px;
+      right: 16px;
+      background: transparent;
+      border: none;
+      font-size: 22px;
+      color: var(--muted);
+      cursor: pointer;
+      line-height: 1;
+      padding: 0;
+      font-family: inherit;
+    }
+
+    .power-modal-close:hover {
+      color: var(--text);
     }
 
     .brand {
@@ -82,30 +210,35 @@
     .brand-copy h1 {
       margin: 0;
       font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
-      font-size: 28px;
-      font-weight: 600;
-      letter-spacing: -0.02em;
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
       line-height: 1;
+      color: #1a1a18;
+      /* Slight fade, like ink that has sat a long time */
+      opacity: 0.88;
     }
 
     .status-pill {
       flex: 0 0 auto;
-      font-size: 10px;
+      font-family: "EB Garamond", Georgia, serif;
+      font-style: italic;
+      font-size: 16px;
       font-weight: 500;
       color: var(--muted);
-      letter-spacing: 0.08em;
+      letter-spacing: 0.02em;
       padding: 0;
       border: 0;
       background: transparent;
       box-shadow: none;
-      text-transform: uppercase;
+      text-transform: none;
       opacity: 0;
       visibility: hidden;
-      transition: opacity 120ms ease;
+      transition: opacity 160ms ease;
     }
 
     .status-pill.is-visible {
-      opacity: 0.68;
+      opacity: 0.72;
       visibility: visible;
     }
 
@@ -119,26 +252,27 @@
     .topbar-note {
       text-align: right;
       white-space: nowrap;
-      font-family: "Avenir Next", "Helvetica Neue", "Segoe UI", sans-serif;
-      font-size: 14px;
+      font-family: "EB Garamond", Georgia, serif;
+      font-style: italic;
+      font-size: 17px;
       line-height: 1.2;
       letter-spacing: 0.01em;
       text-transform: none;
-      color: rgba(31, 29, 25, 0.74);
+      color: rgba(28, 28, 26, 0.55);
       opacity: 1;
     }
 
     .topbar-note a {
       color: inherit;
       text-decoration: none;
-      border-bottom: 1px solid rgba(77, 77, 77, 0.18);
+      border-bottom: 1px solid rgba(28, 28, 26, 0.20);
     }
 
     .chat-panel {
-      background: rgba(255, 255, 255, 0.65);
-      border: 1px solid rgba(77, 77, 77, 0.10);
-      border-radius: 3px;
-      box-shadow: var(--shadow);
+      background: rgba(236, 232, 220, 0.60);
+      border: 1px solid rgba(30, 30, 28, 0.08);
+      border-radius: var(--radius);
+      box-shadow: none;
       overflow: hidden;
       min-height: 0;
       display: flex;
@@ -149,10 +283,10 @@
       flex: 1 1 auto;
       min-height: 0;
       overflow: auto;
-      padding: 18px;
+      padding: 20px;
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 16px;
     }
 
     .message-row {
@@ -169,13 +303,14 @@
 
     .bubble {
       max-width: min(78ch, 82%);
-      border-radius: 3px;
-      padding: 12px 14px;
-      line-height: 1.45;
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      line-height: 1.6;
       white-space: pre-wrap;
       word-break: break-word;
-      border: 1px solid rgba(77, 77, 77, 0.10);
-      box-shadow: 0 8px 30px rgba(43, 32, 24, 0.05);
+      border: 1px solid rgba(30, 30, 28, 0.10);
+      box-shadow: none;
+      font-size: 18px;
     }
 
     .message-row.user .bubble {
@@ -191,32 +326,39 @@
       display: grid;
       grid-template-columns: 1fr auto;
       gap: 10px;
+      align-items: stretch;
     }
 
-    .input-stack {
-      display: grid;
-      gap: 8px;
+    .composer textarea {
+      height: 100%;
+    }
+
+    .composer-side {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
     }
 
     textarea,
     input,
     select {
       width: 100%;
-      border: 1px solid rgba(77, 77, 77, 0.28);
-      border-radius: 3px;
-      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid rgba(30, 30, 28, 0.22);
+      border-radius: var(--radius);
+      background: rgba(220, 220, 216, 0.70);
       color: var(--text);
-      padding: 12px 13px;
+      padding: 10px 13px;
       font: inherit;
-      transition: border-color 120ms ease, box-shadow 120ms ease;
+      font-size: 18px;
+      transition: border-color 140ms ease, box-shadow 140ms ease;
     }
 
     textarea:focus,
     input:focus,
     select:focus {
       outline: none;
-      border-color: rgba(77, 77, 77, 0.6);
-      box-shadow: 0 0 0 3px rgba(77, 77, 77, 0.12);
+      border-color: rgba(30, 30, 28, 0.45);
+      box-shadow: 0 0 0 2px rgba(30, 30, 28, 0.07);
     }
 
     textarea {
@@ -229,27 +371,39 @@
       display: flex;
       justify-content: space-between;
       gap: 10px;
-      font-size: 12px;
+      font-size: 14px;
+      font-style: italic;
       color: var(--muted);
     }
 
+    /* The button that would prefer not to */
     .send-button {
-      align-self: end;
+      align-self: auto;
       min-width: 92px;
       height: 46px;
-      border: 0;
-      border-radius: 3px;
-      background: linear-gradient(180deg, var(--accent), var(--accent-dark));
-      color: white;
-      font: inherit;
+      border: 1px solid rgba(30, 30, 28, 0.30);
+      border-radius: var(--radius);
+      background: var(--accent);
+      color: #ccccc8;
+      font-family: "EB Garamond", Georgia, serif;
+      font-size: 16px;
       font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
       cursor: pointer;
-      box-shadow: 0 12px 30px rgba(169, 72, 8, 0.22);
+      box-shadow: none;
+      transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+    }
+
+    .send-button:hover:not(:disabled) {
+      background: var(--accent-dim);
+      color: #e0e0dc;
+      border-color: rgba(30, 30, 28, 0.20);
     }
 
     .send-button:disabled {
       cursor: not-allowed;
-      opacity: 0.6;
+      opacity: 0.45;
       box-shadow: none;
     }
 
@@ -262,14 +416,19 @@
     details.advanced > summary {
       cursor: pointer;
       list-style: none;
-      padding: 14px 18px;
-      font-weight: 700;
+      padding: 12px 18px;
+      font-family: "EB Garamond", Georgia, serif;
+      font-style: italic;
+      font-size: 17px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      color: var(--muted);
       border-bottom: 1px solid transparent;
       user-select: none;
     }
 
     details.advanced[open] > summary {
-      border-bottom-color: rgba(77, 77, 77, 0.10);
+      border-bottom-color: var(--rule);
     }
 
     details.advanced > summary::-webkit-details-marker {
@@ -297,17 +456,22 @@
     .field label {
       display: grid;
       gap: 6px;
-      font-size: 12px;
-      font-weight: 700;
+      font-family: "EB Garamond", Georgia, serif;
+      font-style: italic;
+      font-size: 15px;
+      font-weight: 500;
       color: var(--muted);
-      letter-spacing: 0.03em;
+      letter-spacing: 0.04em;
     }
 
     .warning {
       padding: 10px 12px;
-      border-radius: 12px;
-      border: 1px solid rgba(201, 95, 23, 0.18);
-      background: rgba(201, 95, 23, 0.06);
+      border-radius: var(--radius);
+      border: 1px solid rgba(30, 30, 28, 0.14);
+      background: rgba(30, 30, 28, 0.04);
+      font-style: italic;
+      font-size: 16px;
+      line-height: 1.6;
     }
 
     @media (max-width: 760px) {
@@ -336,8 +500,13 @@
         grid-template-columns: 1fr;
       }
 
+      .composer-side {
+        flex-direction: row;
+        align-items: center;
+      }
+
       .send-button {
-        width: 100%;
+        flex: 0 0 auto;
         min-width: 0;
       }
 
@@ -361,6 +530,15 @@
         </div>
         <div id="status-pill" class="status-pill">Idle</div>
       </div>
+      <div id="power-display" class="power-display">
+        <span class="power-label">is currently consuming</span>
+        <span class="power-val" id="power-watts">— W</span>
+        <span class="power-sep">·</span>
+        <span class="power-val" id="power-co2">— gCO₂/hr</span>
+        <span class="power-sep">·</span>
+        <span class="power-val" id="power-cost">—/hr</span>
+        <button class="power-info-btn" id="power-info-btn" aria-label="Explain these figures">?</button>
+      </div>
       <p class="topbar-note">A <a href="https://stuartgeiger.com" target="_blank" rel="noreferrer">Stuart Geiger</a> Hallucination</p>
     </header>
 
@@ -369,14 +547,14 @@
     </main>
 
     <section class="composer">
-      <div class="input-stack">
-        <textarea id="message-input" placeholder="Type a message. Shift+Enter for a newline."></textarea>
+      <textarea id="message-input" placeholder="Type a message. Shift+Enter for a newline."></textarea>
+      <div class="composer-side">
+        <button id="send-button" class="send-button">Send</button>
         <div class="input-meta">
           <span id="input-hint"></span>
           <span id="input-count">0 chars</span>
         </div>
       </div>
-      <button id="send-button" class="send-button">Send</button>
     </section>
 
     <details class="advanced">
@@ -441,6 +619,33 @@
         <div class="field-grid">
           <div class="field">
             <label>
+              WATTS_IDLE
+              <input id="watts-idle" type="number" min="0" step="1">
+            </label>
+          </div>
+          <div class="field">
+            <label>
+              WATTS_ACTIVE
+              <input id="watts-active" type="number" min="0" step="1">
+            </label>
+          </div>
+          <div class="field">
+            <label>
+              gCO₂/Wh
+              <input id="gco2-per-wh" type="number" min="0" step="0.001">
+            </label>
+          </div>
+          <div class="field">
+            <label>
+              COST_PER_HR ($)
+              <input id="cost-per-hr" type="number" min="0" step="0.01">
+            </label>
+          </div>
+        </div>
+
+        <div class="field-grid">
+          <div class="field">
+            <label>
               TEMPERATURE
               <input id="temperature" type="number" min="0" max="2" step="0.05">
             </label>
@@ -456,11 +661,24 @@
     </details>
   </div>
 
+  <div class="power-modal-backdrop" id="power-modal-backdrop">
+    <div class="power-modal" role="dialog" aria-modal="true">
+      <button class="power-modal-close" id="power-modal-close" aria-label="Close">×</button>
+      <h2>About these figures</h2>
+      <p>These are estimates for the server powering BartlebyGPT, which as currently deployed on an RTX A4000 in a data center in Washington State. The server can generate up to 15 simultaneous conversations, so these figures are the cost to serve all users. 
+      <p><strong>Watts</strong> is the estimated total facility draw for this server — GPU, CPU, RAM, storage, fans, and the data center's power distribution and cooling overhead (PUE ~1.15). Idle reflects background system load; active reflects full GPU utilization during inference.</p>
+      <p><strong>gCO₂/hr</strong> is the direct carbon cost of the electricity consumed — wattage × grid carbon intensity. It does not include manufacturing, shipping, or end-of-life costs for the hardware. This server runs on hydroelectric power in Washington State, so the grid intensity is very low (~0.030 gCO₂/Wh vs. the US average of ~0.386).</p>
+      <p><strong>$/hr</strong> is the cost to rent this GPU from the data center — not a per-query charge, not electricity, not amortized hardware. The server accrues this cost whenever it is running, idle or not.</p>
+      <p>All three parameters are adjustable under <em>Advanced</em>.</p>
+    </div>
+  </div>
+
   <script>
     window.goatcounter = window.goatcounter || {};
     Object.assign(window.goatcounter, {
       no_onload: true,
       no_events: true,
+      allow_local: true,
     });
   </script>
   <script
@@ -484,6 +702,10 @@
       requestTimeout: 600,
       temperature: 0.7,
       topP: 0.9,
+      wattsIdle: 240,
+      wattsActive: 470,
+      gco2PerWh: 0.030,
+      costPerHr: 0.09,
     };
 
     const elements = {
@@ -502,6 +724,16 @@
       requestTimeout: document.getElementById("request-timeout"),
       temperature: document.getElementById("temperature"),
       topP: document.getElementById("top-p"),
+      wattsIdle: document.getElementById("watts-idle"),
+      wattsActive: document.getElementById("watts-active"),
+      gco2PerWh: document.getElementById("gco2-per-wh"),
+      costPerHr: document.getElementById("cost-per-hr"),
+      powerWatts: document.getElementById("power-watts"),
+      powerCo2: document.getElementById("power-co2"),
+      powerCost: document.getElementById("power-cost"),
+      powerInfoBtn: document.getElementById("power-info-btn"),
+      powerModalBackdrop: document.getElementById("power-modal-backdrop"),
+      powerModalClose: document.getElementById("power-modal-close"),
     };
 
     const state = {
@@ -521,10 +753,17 @@
 
     function gcCount(path, title) {
       if (!gcReady()) return;
+      const pagePath = (window.location.pathname || "/")
+        .replace(/\/index\.html$/, "/")
+        .replace(/\/+$/, "") || "/";
+      const cleanPath = String(path || "").replace(/^\/+/, "");
+      const eventPath = cleanPath
+        ? `${pagePath === "/" ? "" : pagePath}/event/${cleanPath}`
+        : pagePath;
       try {
         window.goatcounter.count({
-          path,
-          title: title || path,
+          path: eventPath,
+          title: title || cleanPath || eventPath,
           event: true,
         });
       } catch (_err) {}
@@ -607,6 +846,10 @@
         requestTimeout: coercePositiveInt(elements.requestTimeout.value, defaults.requestTimeout),
         temperature: coerceFloat(elements.temperature.value, defaults.temperature),
         topP: coerceFloat(elements.topP.value, defaults.topP),
+        wattsIdle: coerceFloat(elements.wattsIdle.value, defaults.wattsIdle),
+        wattsActive: coerceFloat(elements.wattsActive.value, defaults.wattsActive),
+        gco2PerWh: coerceFloat(elements.gco2PerWh.value, defaults.gco2PerWh),
+        costPerHr: coerceFloat(elements.costPerHr.value, defaults.costPerHr),
       };
     }
 
@@ -620,7 +863,12 @@
       elements.requestTimeout.value = settings.requestTimeout;
       elements.temperature.value = settings.temperature;
       elements.topP.value = settings.topP;
+      elements.wattsIdle.value = settings.wattsIdle;
+      elements.wattsActive.value = settings.wattsActive;
+      elements.gco2PerWh.value = settings.gco2PerWh;
+      elements.costPerHr.value = settings.costPerHr;
       updateInputCount();
+      updatePowerDisplay(false);
     }
 
     function coercePositiveInt(value, fallback) {
@@ -633,6 +881,15 @@
       return Number.isFinite(parsed) ? parsed : fallback;
     }
 
+    function updatePowerDisplay(active) {
+      const settings = getSettings();
+      const watts = active ? settings.wattsActive : settings.wattsIdle;
+      const co2PerHr = watts * settings.gco2PerWh;
+      elements.powerWatts.textContent = `${Math.round(watts)} W`;
+      elements.powerCo2.textContent = `${co2PerHr.toFixed(1)} gCO₂/hr`;
+      elements.powerCost.textContent = `$${settings.costPerHr.toFixed(2)}/hr`;
+    }
+
     function setBusy(next, label) {
       state.busy = !!next;
       elements.sendButton.disabled = state.busy;
@@ -640,6 +897,7 @@
       elements.statusPill.textContent = text;
       const showStatus = text && text.toLowerCase() !== "idle";
       elements.statusPill.classList.toggle("is-visible", showStatus);
+      updatePowerDisplay(state.busy);
     }
 
     function updateInputCount() {
@@ -951,9 +1209,31 @@
       elements.requestTimeout,
       elements.temperature,
       elements.topP,
+      elements.wattsIdle,
+      elements.wattsActive,
+      elements.gco2PerWh,
+      elements.costPerHr,
     ].forEach((element) => {
       element.addEventListener("change", saveSettings);
       element.addEventListener("blur", saveSettings);
+    });
+
+    [elements.wattsIdle, elements.wattsActive, elements.gco2PerWh, elements.costPerHr].forEach((el) => {
+      el.addEventListener("input", () => updatePowerDisplay(state.busy));
+    });
+
+    elements.powerInfoBtn.addEventListener("click", () => {
+      elements.powerModalBackdrop.classList.add("is-open");
+    });
+
+    elements.powerModalClose.addEventListener("click", () => {
+      elements.powerModalBackdrop.classList.remove("is-open");
+    });
+
+    elements.powerModalBackdrop.addEventListener("click", (e) => {
+      if (e.target === elements.powerModalBackdrop) {
+        elements.powerModalBackdrop.classList.remove("is-open");
+      }
     });
 
     state.turnCount = loadTurnCount();
