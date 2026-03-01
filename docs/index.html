@@ -457,12 +457,23 @@
   </div>
 
   <script>
+    window.goatcounter = window.goatcounter || {};
+    Object.assign(window.goatcounter, {
+      no_onload: true,
+      no_events: true,
+    });
+  </script>
+  <script
+    data-goatcounter="https://bartleby-vast.goatcounter.com/count"
+    async
+    src="https://gc.zgo.at/count.js"></script>
+  <script>
     const SETTINGS_KEY = "bartleby-remote-settings-v1";
+    const TURN_COUNT_KEY = "bartleby-remote-turn-count-v1";
     const DEFAULT_BASE_URL = "https://motherboard-genre-gloves-send.trycloudflare.com";
     const MODEL_MAX_CONTEXT_TOKENS = 2048;
     const CHARS_PER_TOKEN_ESTIMATE = 2.6;
     const TOKEN_SAFETY_MARGIN = 32;
-
     const defaults = {
       baseUrl: DEFAULT_BASE_URL,
       modelName: "",
@@ -497,7 +508,78 @@
       busy: false,
       history: [],
       modelCache: {},
+      turnCount: 0,
+      goatStartSent: false,
     };
+
+    function gcReady() {
+      return Boolean(
+        window.goatcounter &&
+        typeof window.goatcounter.count === "function"
+      );
+    }
+
+    function gcCount(path, title) {
+      if (!gcReady()) return;
+      try {
+        window.goatcounter.count({
+          path,
+          title: title || path,
+          event: true,
+        });
+      } catch (_err) {}
+    }
+
+    function goatStart() {
+      if (state.goatStartSent) return;
+
+      const startedAt = Date.now();
+      const timer = window.setInterval(() => {
+        if (!gcReady()) {
+          if (Date.now() - startedAt > 15000) {
+            window.clearInterval(timer);
+          }
+          return;
+        }
+
+        state.goatStartSent = true;
+        window.clearInterval(timer);
+        gcCount("app/start", "App start");
+      }, 150);
+    }
+
+    function loadTurnCount() {
+      try {
+        const raw = sessionStorage.getItem(TURN_COUNT_KEY);
+        const parsed = Number.parseInt(raw || "0", 10);
+        return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+      } catch (_err) {
+        return 0;
+      }
+    }
+
+    function saveTurnCount() {
+      try {
+        sessionStorage.setItem(TURN_COUNT_KEY, String(state.turnCount));
+      } catch (_err) {}
+    }
+
+    function turnBucket(turnCount) {
+      if (turnCount <= 10) return String(turnCount);
+      if (turnCount <= 20) return "11-20";
+      if (turnCount <= 50) return "21-50";
+      return "51+";
+    }
+
+    function countCompletedTurn() {
+      state.turnCount += 1;
+      saveTurnCount();
+      gcCount("session/turn/completed", "Completed turn");
+      gcCount(
+        `session/turn/${turnBucket(state.turnCount)}`,
+        `Turn ${turnBucket(state.turnCount)}`
+      );
+    }
 
     function loadSettings() {
       try {
@@ -621,6 +703,7 @@
 
       const modelId = String(data[0].id).trim();
       state.modelCache[cacheKey] = modelId;
+      gcCount("model/discovered", "Model discovered");
       return modelId;
     }
 
@@ -729,6 +812,7 @@
         let buffer = "";
         let output = "";
         let sawToken = false;
+        let countedResponseStart = false;
 
         while (true) {
           const { value, done } = await reader.read();
@@ -744,7 +828,11 @@
             const data = line.slice(6).trim();
             if (!data) continue;
             if (data === "[DONE]") {
-              return output;
+              return {
+                output,
+                userText: prepared.userText,
+                wasTokenTrimmed: prepared.wasTokenTrimmed,
+              };
             }
 
             let payload;
@@ -760,6 +848,10 @@
             if (!token) continue;
 
             sawToken = true;
+            if (!countedResponseStart) {
+              countedResponseStart = true;
+              gcCount("chat/response-start", "Response start");
+            }
             output += token;
             assistantBubble.textContent = output;
             scrollMessagesToBottom();
@@ -805,11 +897,15 @@
       updateInputCount();
       if (wasTokenTrimmed) {
         elements.inputHint.textContent = `Input trimmed to fit the ${MODEL_MAX_CONTEXT_TOKENS}-token context window.`;
+        gcCount("chat/input-trimmed/context", "Input trimmed for context");
       } else if (wasCharTruncated) {
         elements.inputHint.textContent = `Input truncated to ${settings.maxInputChars} chars before send.`;
+        gcCount("chat/input-trimmed/chars", "Input truncated by character limit");
       } else {
         elements.inputHint.textContent = "Streaming response...";
       }
+
+      gcCount("chat/send", "Chat send");
 
       createBubble("user", userText);
       const assistantBubble = createBubble("assistant", "");
@@ -820,6 +916,8 @@
         const result = await streamCompletion(settings, assistantBubble, userText);
         state.history.push({ role: "user", content: result.userText });
         state.history.push({ role: "assistant", content: result.output });
+        gcCount("chat/response-complete", "Response complete");
+        countCompletedTurn();
         elements.inputHint.textContent = result.wasTokenTrimmed
           ? `Done. Input was trimmed to fit the ${MODEL_MAX_CONTEXT_TOKENS}-token context window.`
           : "Done.";
@@ -828,6 +926,7 @@
         const message = err instanceof Error ? err.message : "Request failed.";
         assistantBubble.textContent = `Error: ${message}`;
         elements.inputHint.textContent = message;
+        gcCount("chat/response-error", "Response error");
         setBusy(false, "Error");
       }
     }
@@ -857,7 +956,9 @@
       element.addEventListener("blur", saveSettings);
     });
 
+    state.turnCount = loadTurnCount();
     applySettings(loadSettings());
+    goatStart();
     renderWelcome();
   </script>
 </body>
