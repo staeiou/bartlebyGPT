@@ -154,6 +154,8 @@
       border-radius: 3px;
       max-width: 480px;
       width: calc(100% - 40px);
+      max-height: calc(100dvh - 40px);
+      overflow-y: auto;
       padding: 28px 30px 24px;
       position: relative;
       font-family: "EB Garamond", Georgia, serif;
@@ -387,7 +389,7 @@
       color: #ccccc8;
       font-family: "EB Garamond", Georgia, serif;
       font-size: 16px;
-      font-weight: 700;
+      font-weight: 600;
       letter-spacing: 0.12em;
       text-transform: uppercase;
       cursor: pointer;
@@ -438,7 +440,7 @@
     .advanced-content {
       padding: 14px 18px 18px;
       display: grid;
-      gap: 14px;
+      gap: 4px;
       max-height: min(34dvh, 320px);
       overflow: auto;
     }
@@ -476,28 +478,70 @@
 
     @media (max-width: 760px) {
       .app-shell {
-        padding: 12px;
-        gap: 10px;
+        padding: 8px 2px 0 2px;
+        gap: 4px;
       }
 
+      .messages {
+        padding-bottom: 0;
+      }
+
+      .composer {
+        padding-top: 2px;
+      }
+
+      /* Brand + attribution inline on row 1, power display on row 2 */
       .topbar {
-        max-width: 100%;
-        grid-template-columns: 1fr;
-        align-items: start;
-        gap: 6px;
+        grid-template-columns: 1fr auto;
+        grid-template-rows: auto auto;
+        align-items: baseline;
+        gap: 2px 10px;
+      }
+
+      .brand {
+        grid-column: 1;
+        grid-row: 1;
       }
 
       .topbar-note {
-        width: 100%;
+        grid-column: 2;
+        grid-row: 1;
+        white-space: nowrap;
+        text-align: right;
+        font-size: 13px;
       }
 
-      .topbar-note {
-        white-space: normal;
-        text-align: left;
+      #power-display {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        cursor: pointer;
+      }
+
+      .power-info-btn {
+        display: none;
+      }
+
+      .status-pill {
+        display: none;
+      }
+
+      .brand-copy h1 {
+        font-size: 20px;
       }
 
       .composer {
         grid-template-columns: 1fr;
+      }
+
+      .composer textarea {
+        height: calc(1lh + 0.5em);
+        min-height: 0 !important;
+        max-height: unset;
+        resize: none;
+        overflow: hidden;
+        padding: 2px 3px;
       }
 
       .composer-side {
@@ -508,11 +552,27 @@
       .send-button {
         flex: 0 0 auto;
         min-width: 0;
+        height: 1.5em;
+        padding: 1px;
+      }
+
+      /* Advanced flush to bottom, no outer padding */
+      details.advanced {
+        margin: 0 -2px;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+        border-bottom: none;
       }
 
       .field-grid,
       .field-grid.three {
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .message-row.assistant .bubble {
+        max-width: 100%;
+        width: 100%;
       }
 
       .bubble {
@@ -753,17 +813,11 @@
 
     function gcCount(path, title) {
       if (!gcReady()) return;
-      const pagePath = (window.location.pathname || "/")
-        .replace(/\/index\.html$/, "/")
-        .replace(/\/+$/, "") || "/";
       const cleanPath = String(path || "").replace(/^\/+/, "");
-      const eventPath = cleanPath
-        ? `${pagePath === "/" ? "" : pagePath}/event/${cleanPath}`
-        : pagePath;
       try {
         window.goatcounter.count({
-          path: eventPath,
-          title: title || cleanPath || eventPath,
+          path: cleanPath,
+          title: title || cleanPath,
           event: true,
         });
       } catch (_err) {}
@@ -1224,6 +1278,12 @@
 
     elements.powerInfoBtn.addEventListener("click", () => {
       elements.powerModalBackdrop.classList.add("is-open");
+    });
+
+    document.getElementById("power-display").addEventListener("click", (e) => {
+      if (e.target !== elements.powerInfoBtn) {
+        elements.powerModalBackdrop.classList.add("is-open");
+      }
     });
 
     elements.powerModalClose.addEventListener("click", () => {
