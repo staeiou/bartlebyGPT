@@ -586,12 +586,12 @@
     <header class="topbar">
       <div class="brand">
         <div class="brand-copy">
-          <h1>BartlebyGPT</h1>
+          <h1>&nbsp; BartlebyGPT</h1>
         </div>
         <div id="status-pill" class="status-pill">Idle</div>
       </div>
       <div id="power-display" class="power-display">
-        <span class="power-label">is currently consuming</span>
+        <span class="power-label">&nbsp; is currently consuming ~</span>
         <span class="power-val" id="power-watts">— W</span>
         <span class="power-sep">·</span>
         <span class="power-val" id="power-co2">— gCO₂/hr</span>
@@ -726,7 +726,7 @@
       <button class="power-modal-close" id="power-modal-close" aria-label="Close">×</button>
       <h2>About these figures</h2>
       <p>These are estimates for the server powering BartlebyGPT, which as currently deployed on an RTX A4000 in a data center in Washington State. The server can generate up to 15 simultaneous conversations, so these figures are the cost to serve all users. 
-      <p><strong>Watts</strong> is the estimated total facility draw for this server — GPU, CPU, RAM, storage, fans, and the data center's power distribution and cooling overhead (PUE ~1.15). Idle reflects background system load; active reflects full GPU utilization during inference.</p>
+      <p><strong>Watts</strong> is the estimated total facility draw for this server — GPU, CPU, RAM, storage, fans, and the data center's power distribution and cooling overhead (PUE ~1.35). Idle reflects background system load; active reflects full GPU utilization during inference.</p>
       <p><strong>gCO₂/hr</strong> is the direct carbon cost of the electricity consumed — wattage × grid carbon intensity. It does not include manufacturing, shipping, or end-of-life costs for the hardware. This server runs on hydroelectric power in Washington State, so the grid intensity is very low (~0.030 gCO₂/Wh vs. the US average of ~0.386).</p>
       <p><strong>$/hr</strong> is the cost to rent this GPU from the data center — not a per-query charge, not electricity, not amortized hardware. The server accrues this cost whenever it is running, idle or not.</p>
       <p>All three parameters are adjustable under <em>Advanced</em>.</p>
@@ -762,8 +762,8 @@
       requestTimeout: 600,
       temperature: 0.7,
       topP: 0.9,
-      wattsIdle: 240,
-      wattsActive: 470,
+      wattsIdle: 400,
+      wattsActive: 540,
       gco2PerWh: 0.030,
       costPerHr: 0.09,
     };
