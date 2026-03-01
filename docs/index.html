@@ -823,6 +823,15 @@
       } catch (_err) {}
     }
 
+    function gcPageview() {
+      if (!gcReady()) return;
+      try {
+        window.goatcounter.count({
+          event: false,
+        });
+      } catch (_err) {}
+    }
+
     function goatStart() {
       if (state.goatStartSent) return;
 
@@ -837,6 +846,7 @@
 
         state.goatStartSent = true;
         window.clearInterval(timer);
+        gcPageview();
         gcCount("app/start", "App start");
       }, 150);
     }
