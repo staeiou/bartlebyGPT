@@ -50,14 +50,15 @@
     }
 
     .app-shell {
+      --shell-gap: 12px;
       width: 100%;
       height: 100dvh;
       max-height: 100dvh;
       overflow: hidden;
-      padding: 16px;
+      padding: 16px 16px 0;
       display: grid;
       grid-template-rows: auto 1fr auto auto;
-      gap: 12px;
+      gap: var(--shell-gap);
     }
 
     .composer,
@@ -98,7 +99,7 @@
     }
 
     .power-display .power-label {
-      font-style: italic;
+      font-style: normal;
       font-weight: 500;
       font-size: 17px;
     }
@@ -259,7 +260,7 @@
       line-height: 1;
       color: #1a1a18;
       /* Slight fade, like ink that has sat a long time */
-      opacity: 0.88;
+      opacity: 1;
     }
 
     .status-pill {
@@ -551,12 +552,13 @@
       padding: 0;
       overflow: hidden;
       min-height: 0;
+      margin-top: calc(-1 * var(--shell-gap, 12px));
     }
 
     details.advanced > summary {
       cursor: pointer;
       list-style: none;
-      padding: 12px 18px;
+      padding: 5px 18px;
       display: flex;
       align-items: center;
       gap: 8px;
@@ -592,7 +594,7 @@
     }
 
     .advanced-content {
-      padding: 14px 18px 18px;
+      padding: 8px 12px 10px;
       display: grid;
       gap: 4px;
       max-height: min(34dvh, 320px);
@@ -662,6 +664,24 @@
 
     /* Tablet (portrait + landscape): tighter welcome shell */
     @media (max-width: 1060px) {
+      .app-shell {
+        --shell-gap: 6px;
+        padding: 6px 6px 0 6px;
+        gap: var(--shell-gap);
+      }
+
+      .welcome-title {
+        font-size: clamp(24px, 3.2vw, 32px);
+      }
+
+      .welcome-subtitle {
+        font-size: clamp(20px, 2.6vw, 26px);
+      }
+
+      .advanced-content {
+        padding: 8px 14px 10px;
+      }
+
       .suggestion-grid {
         grid-template-columns: repeat(3, minmax(0, 1fr));
       }
@@ -736,8 +756,9 @@
 
     @media (max-width: 940px) {
       .app-shell {
+        --shell-gap: 4px;
         padding: 2px 2px 0 2px;
-        gap: 4px;
+        gap: var(--shell-gap);
       }
 
       .messages {
@@ -875,7 +896,7 @@
         display: block;
         position: fixed;
         right: 8px;
-        bottom: calc(env(safe-area-inset-bottom, 0px) + 13px);
+        bottom: 2px;
         z-index: 6;
         margin: 0;
         font-family: "EB Garamond", Georgia, serif;
@@ -884,10 +905,10 @@
         line-height: 1.2;
         color: rgba(28, 28, 26, 0.55);
         background: rgba(238, 234, 224, 0.92);
-        padding: 3px 6px;
+        padding: 1px 4px;
         border: none;
         border-radius: var(--radius);
-        bottom: calc(env(safe-area-inset-bottom, 0px) + 11px);
+        bottom: 2px;
         transition: opacity 120ms ease, visibility 120ms ease;
       }
 
@@ -903,13 +924,17 @@
         pointer-events: none;
       }
 
-      /* Advanced flush to bottom, no outer padding */
+      /* Advanced flush to bottom, no outer padding, touches composer */
       details.advanced {
-        margin: 0 -2px;
+        margin: -4px -2px 0;
         border-radius: 0;
         border-left: none;
         border-right: none;
         border-bottom: none;
+      }
+
+      details.advanced > summary {
+        padding: 3px 18px;
       }
 
       .field-grid,
@@ -924,6 +949,11 @@
 
       .bubble {
         max-width: 92%;
+        padding: 8px 10px;
+      }
+
+      .messages {
+        padding: 12px 6px;
       }
     }
   </style>
@@ -1137,6 +1167,18 @@
 
     const STARTER_POOL = [
       {
+        kicker: "Ideology Critique",
+        title: "Critique the Ideology",
+        description: "Hand over a text, movement, institution, or claim and get back an immanent critique: what it assumes, what it occludes, whose interests it serves, and where its internal contradictions lie.",
+        prompt: "Critique the ideology of [text / movement / institution / claim], identifying its constitutive assumptions, what it naturalizes or occludes, whose interests it serves and whose it forecloses, and where its internal contradictions are most exposed: [paste text, argument, or context here]",
+      },
+      {
+        kicker: "Ideology Critique",
+        title: "Denaturalize the Ideology",
+        description: "Hand over a text, policy, or cultural form and get back a critique of its ideological function: what it presents as natural, what it conceals, and what a demystified account reveals.",
+        prompt: "Critique the ideological function of [text / policy / cultural form], identifying what it presents as natural or inevitable, what social relations it conceals, how it interpellates its subjects, and what a demystified account of its conditions of production reveals: [paste text, argument, or context here]",
+      },
+      {
         kicker: "Applied Ethics",
         title: "Deconstruct the Ethics",
         description: "Hand over a practice, policy, or issue and get back a rigorous ethical analysis: stakes, frameworks, conflicts, and a defensible judgment.",
@@ -1150,7 +1192,7 @@
       },
       {
         kicker: "Legal Analysis",
-        title: "Draft the Memorandum",
+        title: "Draft the Legal Brief",
         description: "Hand over the facts, issue, and forum, then ask for a full first-pass research memo with authorities and competing arguments.",
         prompt: "Prepare a first-pass legal research memorandum for a case about [issue, in jurisdiction], identifying the controlling authorities, governing standards, strongest arguments for each side, likely procedural posture, and a reasoned recommendation: [paste facts, authorities, or notes here]",
       },
