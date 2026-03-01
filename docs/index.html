@@ -181,7 +181,7 @@
       background: var(--panel);
       border: 1px solid var(--panel-border);
       border-radius: 3px;
-      max-width: 730px;
+      max-width: 1000px;
       width: calc(100% - 40px);
       max-height: calc(100dvh - 40px);
       overflow-y: auto;
@@ -210,17 +210,20 @@
     }
 
     .power-modal-close {
-      position: absolute;
-      top: 14px;
-      right: 16px;
+      position: sticky;
+      top: -28px;
+      float: right;
+      margin-top: -28px;
+      margin-right: -30px;
       background: transparent;
       border: none;
       font-size: 22px;
       color: var(--muted);
       cursor: pointer;
       line-height: 1;
-      padding: 0;
+      padding: 8px 12px;
       font-family: inherit;
+      z-index: 1;
     }
 
     .power-modal-close:hover {
@@ -370,14 +373,14 @@
 
     .suggestion-grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 14px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
     }
 
     .suggestion-card {
       width: 100%;
       min-height: 180px;
-      padding: 18px;
+      padding: 14px 12px;
       display: grid;
       align-content: start;
       gap: 14px;
@@ -406,7 +409,8 @@
 
     .suggestion-title {
       margin: 0;
-      font-size: 20px;
+      font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      font-size: 18px;
       line-height: 1.1;
       font-weight: 600;
       color: rgba(28, 26, 20, 0.88);
@@ -414,9 +418,11 @@
 
     .suggestion-prompt {
       margin: 0;
-      font-size: 16px;
-      line-height: 1.45;
-      color: rgba(28, 26, 20, 0.78);
+      font-family: "EB Garamond", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      font-size: 18px;
+      font-weight: 500;
+      line-height: 1.3;
+      color: rgba(28, 26, 20, .85);
     }
 
     .message-row {
@@ -460,7 +466,7 @@
     }
 
     .composer textarea {
-      height: 100%;
+      height: calc(100% + 1.5em);
     }
 
     .composer-side {
@@ -640,10 +646,10 @@
       line-height: 1.6;
     }
 
-    /* Tablet (portrait + landscape): 2-col suggestion grid, tighter welcome shell */
+    /* Tablet (portrait + landscape): tighter welcome shell */
     @media (max-width: 1020px) {
       .suggestion-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
       }
 
       .suggestion-card {
@@ -670,12 +676,17 @@
       }
 
       .topbar-note {
-        display: none;
+        display: block;
+        grid-column: 2;
+        grid-row: 1;
+        align-self: start;
+        text-align: right;
+        padding-right: 5px;
       }
 
       #power-display {
-        grid-column: 1 / -1;
-        grid-row: 2;
+        grid-column: 1;
+        grid-row: 3;
         justify-content: flex-start;
         flex-wrap: wrap;
       }
@@ -683,23 +694,31 @@
       .active-count-header {
         display: block;
         grid-column: 2;
-        grid-row: 1;
-        align-self: center;
-        font-size: 13px;
+        grid-row: 3;
+        align-self: end;
+        font-size: 17px;
         color: var(--muted);
         white-space: nowrap;
         text-align: right;
+        padding-right: 5px;
       }
 
       #power-active-count,
-      .power-sep:has(+ #power-active-count) {
+.power-sep:has(+ #power-active-count) {
         display: none;
+      }
+    }
+
+    /* Portrait tablet: 2-col grid */
+    @media (max-width: 860px) and (orientation: portrait) {
+      .suggestion-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
 
     @media (max-width: 760px) {
       .app-shell {
-        padding: 8px 2px 0 2px;
+        padding: 2px 2px 0 2px;
         gap: 4px;
       }
 
@@ -796,10 +815,11 @@
         grid-column: 2;
         grid-row: 1;
         align-self: center;
-        font-size: 13px;
+        font-size: 17px;
         color: var(--muted);
         white-space: nowrap;
         text-align: right;
+        padding-right: 5px;
       }
 
       #power-active-count,
@@ -813,7 +833,7 @@
       }
 
       .composer textarea {
-        height: calc(2lh + 0.5em);
+        height: calc(3lh + 0.5em);
         min-height: 0 !important;
         max-height: unset;
         resize: none;
@@ -830,14 +850,14 @@
         flex: 0 0 auto;
         min-width: 0;
         height: 1.5em;
-        padding: 1px;
+        padding: 1px 10px;
       }
 
       .mobile-hallucination {
         display: block;
         position: fixed;
         right: 8px;
-        bottom: calc(env(safe-area-inset-bottom, 0px) + 4px);
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 13px);
         z-index: 6;
         margin: 0;
         font-family: "EB Garamond", Georgia, serif;
@@ -847,8 +867,9 @@
         color: rgba(28, 28, 26, 0.55);
         background: rgba(238, 234, 224, 0.92);
         padding: 3px 6px;
-        border: 1px solid rgba(30, 28, 20, 0.08);
+        border: none;
         border-radius: var(--radius);
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 11px);
         transition: opacity 120ms ease, visibility 120ms ease;
       }
 
@@ -901,7 +922,7 @@
       <span id="active-count-header" class="active-count-header"></span>
       <div id="power-display" class="power-display">
         <span class="power-label">&nbsp; is<span class="power-currently"> currently</span> costing ~</span>
-        <span class="power-val" id="power-watts">— W</span>
+        <span class="power-val" id="power-watts">— Watts</span>
         <span class="power-sep">·</span>
         <span class="power-val" id="power-co2">— gCO₂/hr</span>
         <span class="power-sep">·</span>
@@ -1046,8 +1067,8 @@
     <div class="power-modal" role="dialog" aria-modal="true">
       <button class="power-modal-close" id="power-modal-close" aria-label="Close">×</button>
       <h2>About these figures</h2>
-      <p>These figures reflect the live power consumption of BartlebyGPT's server, which runs on one GPU (RTX A4000) in a 4-GPU server at <a href="https://www.tierpoint.com/data-centers/washington/spokane/">TierPoint's Spokane, WA data center</a>. The server directly pulls ~1.2KW when idle and ~2.2KW when at full load, but we are only renting 1/4th of it. This single GPU and 1/4th of a server can generate around 15 replies in parallel at a time.</p>
-      <p><strong>Watts</strong> is the estimated total draw for all current BartlebyGPT users combined: our 300W base 1/4th share of the server, plus the GPU's actual live measured wattage. The RTX A4000 directly pulls ~15W when idle and ~150W at full load, but also generates heat and network traffic. The server + GPU load is multiplied by 1.35× to account for energy costs in cooling, networking, and other data center infrastructure overhead (<a href="https://en.wikipedia.org/wiki/Power_usage_effectiveness">PUE factor</a>).</p>
+      <p>These figures reflect the live power consumption of BartlebyGPT's server, which runs on one GPU (RTX A4000) in a 4-GPU server at <a href="https://www.tierpoint.com/data-centers/washington/spokane/">TierPoint's Spokane, WA data center</a>. The server directly pulls ~1.2 Kilowatts (KW) when idle and ~2.2KW when at full load, but we are only renting 1/4th of it. This single GPU and 1/4th of a server can generate around 15 replies in parallel at a time. </p>
+      <p><strong>Watts</strong> is the estimated total draw for all current BartlebyGPT users combined. We start with our 300W base 1/4th share of the server, then add the GPU's actual live measured wattage. The RTX A4000 directly pulls ~15W when idle and ~150W at full load, but also generates heat and network traffic. The 1/4th server + live 1 GPU load is multiplied by 1.35× to account for energy costs in cooling, networking, and other data center infrastructure overhead (<a href="https://en.wikipedia.org/wiki/Power_usage_effectiveness">PUE factor</a>). For reference, a small space heater, air conditioner window unit, or large TV and sound system pulls ~500-1000W</p>
       <p><strong>gCO₂/hr</strong> is the estimated carbon cost of that total estimated power draw: watts × grid carbon intensity. Avista Power serves Spokane with <a href="https://www.myavista.com/about-us/about-our-energy-mix">a ~60% renewable power mix</a>, giving an estimated <a href="https://www.epa.gov/energy/greenhouse-gas-equivalencies-calculator">emissions factor of ~0.3 gCO₂/Wh</a>, although this can be higher if the data center burns its own fossil fuel generators when grid capacity is low. This does not include emissions from hardware manufacturing, end-of-life disposal, data center workers' commutes, or private jets to lobby politicians about data center regulations.</p>
       <p><strong>$/hr</strong> is our rental cost for this GPU and our quarter-server share, accrued continuously whether idle or busy, shared across all users of the site.</p>
       <p>All three parameters are adjustable under <em>Advanced</em>.</p>
@@ -1089,7 +1110,20 @@
       costPerHr: 0.09,
     };
 
-    const STARTER_PROMPTS = [
+    const ETHICS_PROMPT = {
+      kicker: "Moral Philosophy",
+      title: "Resolve the Dilemma",
+      description: "Hand over a real or hypothetical moral dilemma and get back the competing obligations laid out, the strongest case for each horn, where the genuine crux lies, and a defended resolution.",
+      prompt: "Resolve the moral dilemma of [situation / choice / conflict], identifying the competing obligations at stake, the strongest case for each course of action, where the genuine crux lies, and a defended all-things-considered resolution: [paste the situation, constraints, or relevant details here]",
+    };
+
+    const STARTER_POOL = [
+      {
+        kicker: "Applied Ethics",
+        title: "Deconstruct the Ethics",
+        description: "Hand over a practice, policy, or issue and get back a rigorous ethical analysis: stakes, frameworks, conflicts, and a defensible judgment.",
+        prompt: "Deconstruct the ethics of [practice / policy / issue], identifying whose interests it serves, what harms it produces or permits, what major ethical frameworks demand, where they converge and conflict, and what a defensible all-things-considered judgment requires: [paste relevant facts, context, or arguments here]",
+      },
       {
         kicker: "Literary Criticism",
         title: "Frame the Interpretation",
@@ -1100,7 +1134,7 @@
         kicker: "Legal Analysis",
         title: "Draft the Memorandum",
         description: "Hand over the facts, issue, and forum, then ask for a full first-pass research memo with authorities and competing arguments.",
-        prompt: "Prepare a first-pass legal research memorandum for a case in [jurisdiction], identifying the controlling authorities, governing standards, strongest arguments for each side, likely procedural posture, and a reasoned recommendation on [issue]: [paste facts, authorities, or notes here]",
+        prompt: "Prepare a first-pass legal research memorandum for a case about [issue, in jurisdiction], identifying the controlling authorities, governing standards, strongest arguments for each side, likely procedural posture, and a reasoned recommendation: [paste facts, authorities, or notes here]",
       },
       {
         kicker: "Research Synthesis",
@@ -1108,7 +1142,40 @@
         description: "Make it sound entirely reasonable to outsource the whole review article: sources, patterns, debates, and provisional conclusions.",
         prompt: "Conduct a systematic literature review, bibliometric mapping, and synthetic meta-analysis of the research on [topic], identifying the major schools of thought, influential works, recurring methods, contested findings, and the clearest gaps for future inquiry: [paste sources, abstracts, or notes here]",
       },
+      {
+        kicker: "Screenwriting",
+        title: "Craft the Screenplay",
+        description: "Turn a premise into a scene or short script, with character established through action and dialogue and tension built according to the conventions of the form.",
+        prompt: "Write a screenplay script for [genre / format / platform], establishing character through action and dialogue, building scene-level tension, observing the visual grammar of the form, and calibrating pace and structure to the demands of the medium: [paste premise, characters, setting, or an existing scene here]",
+      },
+      {
+        kicker: "Speculative Fiction",
+        title: "Imagine the Speculative",
+        description: "Develop a speculative premise — technological, social, or counterfactual — into a world with internal logic, character pressure, and a lived-in scene.",
+        prompt: "Develop a speculative fiction premise for [concept / technology / social change / historical counterfactual], building out the internal logic of the world, the pressure it puts on its characters, and a scene or passage that makes it feel lived-in: [paste ideas, fragments, or constraints here]",
+      },
+      {
+        kicker: "Grant Writing",
+        title: "Draft the Grant Narrative",
+        description: "Turn a project idea into a fundable narrative: significance, innovation, approach, and broader impact in the register of the funder.",
+        prompt: "Draft a grant proposal and narrative for [project / funding body / field], articulating the significance of the problem, the innovation of the approach, the feasibility of the plan, and the broader impact of the work in the register and priorities of the funder: [paste project description, aims, or existing draft here]",
+      },
+      {
+        kicker: "Recommendation",
+        title: "Write the Recommendation",
+        description: "Give the facts and get back a draft that is warm, specific, and credible — calibrated to what selection committees in this context actually want to read.",
+        prompt: "Write a letter of recommendation for [person / position / program], drawing on the specific evidence provided to make a case that is warm, credible, and particular rather than generic, calibrated to what selection committees in this context are actually looking for: [paste facts, anecdotes, the candidate's materials, or your notes here]",
+      },
     ];
+
+    function getStarterPrompts() {
+      const pool = STARTER_POOL.slice();
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      return [pool[0], ETHICS_PROMPT, pool[1], pool[2]];
+    }
 
     const elements = {
       messages: document.getElementById("messages"),
@@ -1322,10 +1389,10 @@
       const settings = getSettings();
       const watts = active ? settings.wattsActive : settings.wattsIdle;
       const co2PerHr = watts * settings.gco2PerWh;
-      elements.powerWatts.textContent = `${Math.round(watts)} W`;
+      elements.powerWatts.textContent = `${Math.round(watts)} Watts`;
       elements.powerCo2.textContent = `${co2PerHr.toFixed(1)} gCO₂/hr`;
       elements.powerCost.textContent = `$${settings.costPerHr.toFixed(2)}/hr`;
-      const fallbackCountText = active ? "generating 1 replies" : "";
+      const fallbackCountText = active ? "generating 1 replies" : "generating 0 replies";
       elements.powerActiveCount.textContent = fallbackCountText;
       elements.activeCountHeader.textContent = fallbackCountText;
       elements.powerDisplay.classList.toggle("is-active", !!active);
@@ -1378,10 +1445,10 @@
         );
       }
 
-      elements.powerWatts.textContent = `${Math.round(displayWatts)} W`;
+      elements.powerWatts.textContent = `${Math.round(displayWatts)} Watts`;
       elements.powerCo2.textContent = `${co2PerHr.toFixed(1)} gCO₂/hr`;
       elements.powerCost.textContent = `$${displayCost.toFixed(2)}/hr`;
-      const activeCountText = activeCount > 0 ? `generating ${activeCount} replies` : "";
+      const activeCountText = `generating ${activeCount} replies`;
       elements.powerActiveCount.textContent = activeCountText;
       elements.activeCountHeader.textContent = activeCountText;
       elements.powerDisplay.classList.toggle("is-active", activeCount > 0);
@@ -1487,12 +1554,22 @@
 
     function useStarterPrompt(prompt) {
       if (!prompt || state.busy) return;
-      elements.input.value = prompt;
+      const stripped = prompt.replace(/[:,]?\s*\[paste[^\]]*\]\s*$/, "").trimEnd();
+      const bracketMatch = stripped.match(/\[([^\]]*)\]/);
+      let cursorPos;
+      let filledPrompt;
+      if (bracketMatch) {
+        cursorPos = bracketMatch.index;
+        filledPrompt = stripped.slice(0, cursorPos) + stripped.slice(cursorPos + bracketMatch[0].length);
+      } else {
+        filledPrompt = stripped;
+        cursorPos = filledPrompt.length;
+      }
+      elements.input.value = filledPrompt;
       updateInputCount();
       elements.input.focus();
-      const cursor = elements.input.value.length;
-      elements.input.setSelectionRange(cursor, cursor);
-      elements.inputHint.textContent = "Prompt added below. Edit as you like, then send.";
+      elements.input.setSelectionRange(cursorPos, cursorPos);
+      elements.inputHint.textContent = "";
     }
 
     function clearWelcome() {
@@ -1522,7 +1599,7 @@
       const grid = document.createElement("div");
       grid.className = "suggestion-grid";
 
-      STARTER_PROMPTS.forEach((starter) => {
+      getStarterPrompts().forEach((starter) => {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "suggestion-card";
