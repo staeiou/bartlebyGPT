@@ -965,9 +965,9 @@
     <div class="power-modal" role="dialog" aria-modal="true">
       <button class="power-modal-close" id="power-modal-close" aria-label="Close">×</button>
       <h2>About these figures</h2>
-      <p>These figures are tied to the live server powering BartlebyGPT, currently deployed on an RTX A4000 in TierPoint's Spokane, WA data center. We are renting 1/4th of a rack server that has 4 GPUs, which directly pulls about 1.2 Megawatts when idle and 2.2 MW when active. The cooling and other infrastructure requires about 35% more energy to run.  </p>
+      <p>These figures are tied to the live server powering BartlebyGPT, currently deployed on an RTX A4000 in TierPoint's Spokane, WA data center. We are renting 1/4th of a rack server that has 4 GPUs, which directly pulls about 1.2 kW when idle and 2.2 kW when active. The cooling and other infrastructure requires about 35% more energy to run.  </p>
       <p><strong>Watts</strong> is shown as a 300W baseline for the rest of the machine, plus a concurrent-share of the live GPU's actual power consumption in Watts, with extra cooling overhead scaling upward as GPU power rises.</p>
-      <p><strong>gCO₂/Whr</strong> is the direct carbon cost of that displayed GPU draw — wattage × grid carbon intensity. Avista Power serves Spokane with a ~65% renewable power mix, with an estimated emissions factor of ~0.3 g/Wh. This still does not include emissions generated in manufacturing or end-of-life costs for the hardware, or private jets to lobby politicians.</p>
+      <p><strong>gCO₂/hr</strong> is the direct carbon cost of that displayed GPU draw — wattage × grid carbon intensity. Avista Power serves Spokane with a ~65% renewable power mix, with an estimated emissions factor of ~0.3 g/Wh. This still does not include emissions generated in manufacturing or end-of-life costs for the hardware, or private jets to lobby politicians.</p>
       <p><strong>$/hr</strong> is the cost to rent this GPU from the data center. We accrue this cost whenever it is running, idle or not.</p>
       <p>All three parameters are adjustable under <em>Advanced</em>.</p>
     </div>
