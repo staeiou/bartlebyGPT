@@ -1284,6 +1284,7 @@
       powerTelemetryInFlight: false,
       powerTelemetryTimer: null,
       powerTelemetryMode: "",
+      idle: false,
     };
 
     function gcReady() {
@@ -1573,9 +1574,43 @@
 
       refreshPowerTelemetry();
       state.powerTelemetryTimer = window.setInterval(() => {
-        refreshPowerTelemetry();
+        if (!state.idle) refreshPowerTelemetry();
       }, 1000);
     }
+
+    // Idle detection: pause polling after 5 min of no user activity.
+    // Uses activity events that work across desktop and mobile browsers,
+    // plus visibilitychange for tab switching / backgrounding.
+    (function initIdleDetection() {
+      const IDLE_MS = 5 * 60 * 1000;
+      let idleTimeout = null;
+
+      function onActive() {
+        if (state.idle) {
+          state.idle = false;
+          refreshPowerTelemetry(); // immediate refresh on wake
+        }
+        clearTimeout(idleTimeout);
+        idleTimeout = setTimeout(() => { state.idle = true; }, IDLE_MS);
+      }
+
+      function onVisibilityChange() {
+        if (document.hidden) {
+          // Tab is hidden — treat as idle immediately
+          clearTimeout(idleTimeout);
+          state.idle = true;
+        } else {
+          onActive();
+        }
+      }
+
+      const activityEvents = ["mousemove", "mousedown", "keydown", "touchstart", "scroll", "pointerdown"];
+      activityEvents.forEach(ev => window.addEventListener(ev, onActive, { passive: true }));
+      document.addEventListener("visibilitychange", onVisibilityChange);
+
+      // Start the initial idle countdown
+      idleTimeout = setTimeout(() => { state.idle = true; }, IDLE_MS);
+    })();
 
     function updateMobileHallucination() {
       elements.mobileHallucination.classList.toggle("is-hidden", elements.advancedPanel.open);
