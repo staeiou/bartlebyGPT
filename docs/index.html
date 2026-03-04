@@ -1525,12 +1525,6 @@
         prompt: "Interrogate [dataset / metric / classification], identifying what is counted and what is rendered invisible, what political work the categories perform, whose world the data encodes and whose it erases, and what the infrastructure of measurement assumes about the phenomena it claims to represent: [paste text, description, or context here]",
       },
       {
-        kicker: "Trace",
-        title: "Ground the Abstraction",
-        description: "Hand over an abstract economic or political category and get back a materialist geography: how abstractions land on concrete bodies and places, what spatial fixes are at work, and whose ground is sacrificed.",
-        prompt: "Ground [economic category / policy abstraction], showing how it lands on concrete bodies, communities, and places, identifying what spatial fixes and geographic displacements it requires, whose ground is sacrificed to sustain it, and what the view from the ground reveals that the abstraction conceals: [paste text, description, or context here]",
-      },
-      {
         kicker: "Expose",
         title: "Surface the Racial Logic",
         description: "Hand over a law, policy, institution, or discourse and get back a CRT analysis: how race is constructed and operationalized, what colorblind frameworks obscure, whose interests racial arrangements serve, and what counternarratives reveal.",
@@ -1564,7 +1558,7 @@
         kicker: "Fiction",
         title: "Imagine the Speculative",
         description: "Develop a speculative premise — technological, social, or counterfactual — into a world with internal logic, character pressure, and a lived-in scene.",
-        prompt: "Develop a speculative fiction premise about [concept / technology / social change / historical counterfactual], building out the internal logic of the world, the pressure it puts on its characters, and a scene or passage that makes it feel lived-in: [paste ideas, fragments, or constraints here]",
+        prompt: "Develop a speculative fiction premise about [concept / technology / social change / counterfactual], building out the internal logic of the world, the pressure it puts on its characters, and a scene or passage that makes it feel lived-in: [paste ideas, fragments, or constraints here]",
       },
       {
         kicker: "Administrative",
@@ -1582,7 +1576,7 @@
         kicker: "Administrative",
         title: "Write the Abstract",
         description: "Turn a paper, project, or presentation into a tight abstract that does the work: stakes, method, argument, contribution — in the word count and register the venue requires.",
-        prompt: "Write an abstract for [paper / project / presentation] for [venue / word count], articulating the stakes, method, central argument, and contribution in the register the audience expects: [paste draft, notes, or key claims here]",
+        prompt: "Write an abstract for this paper for [venue / audience], briefly summarizing the main thesis, then articulating the stakes, method, central argument, and contribution in the register the audience expects: [paste draft, notes, or key claims here]",
       },
       {
         kicker: "Administrative",
@@ -1600,19 +1594,19 @@
         kicker: "Educate",
         title: "Explain the Concept",
         description: "Hand over a concept, theory, or finding and get back a clear, accurate explanation calibrated to a specific audience — with the right analogies, the right level of abstraction, and no false simplifications.",
-        prompt: "Explain [concept / theory / finding] to [audience], calibrating the level of abstraction, choosing analogies that illuminate rather than mislead, and preserving accuracy without condescension: [paste the concept, your notes, or what the audience already knows here]",
+        prompt: "Write a one-page pop academic explainer on [concept / theory / finding] at a 10th grade reading level, with a concise introduction of background concepts, plus specific analogies that will resonate for a general audience: [paste the concept, your notes, or what the audience already knows here]",
       },
       {
         kicker: "Educate",
         title: "Design the Syllabus",
         description: "Hand over a course topic, level, and constraints and get back a structured syllabus: learning objectives, unit sequence, key readings, and an assessment structure that aligns with the stated goals.",
-        prompt: "Design a syllabus for [course topic] at [level / institution type], specifying learning objectives, a weekly or unit sequence, key readings or resources, and an assessment structure that aligns with the stated goals: [paste constraints, existing materials, or institutional context here]",
+        prompt: "Design a syllabus for [topic / level / institution], specifying learning objectives, a weekly or unit sequence, key readings or resources, and an assessment structure that aligns with the stated goals: [paste constraints, existing materials, or institutional context here]",
       },
       {
         kicker: "Educate",
         title: "Write the Explainer",
         description: "Turn specialist knowledge into prose a smart non-specialist can follow — without dumbing it down or losing what actually matters.",
-        prompt: "Write a clear, accurate explainer on [topic] for [audience / publication type], translating specialist knowledge into prose a smart non-specialist can follow without losing what is genuinely at stake: [paste source material, technical notes, or key claims here]",
+        prompt: "Write a clear, accurate explainer about [topic, for audience], translating specialist knowledge into prose a smart non-specialist can follow without losing what is genuinely at stake: [paste source material, technical notes, or key claims here]",
       },
     ];
 
@@ -2761,6 +2755,11 @@
     }
 
     elements.input.addEventListener("input", updateInputCount);
+    elements.input.addEventListener("touchmove", (e) => {
+      if (elements.input.scrollHeight > elements.input.clientHeight) {
+        e.stopPropagation();
+      }
+    }, { passive: true });
     elements.input.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
