@@ -1038,8 +1038,14 @@
         min-height: 0 !important;
         max-height: unset;
         resize: none;
-        overflow: hidden;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
         padding: 2px 3px;
+      }
+
+      .composer textarea::-webkit-scrollbar {
+        display: none;
       }
 
       .composer-side {
