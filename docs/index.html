@@ -1388,12 +1388,6 @@
     const STARTER_POOL = [
       {
         kicker: "Expose",
-        title: "Critique the Ideology",
-        description: "Hand over a text, movement, institution, or claim and get back an immanent critique: what it assumes, what it occludes, whose interests it serves, and where its internal contradictions lie.",
-        prompt: "Critique the ideology of [text / movement / institution / claim], identifying its constitutive assumptions, what it naturalizes or occludes, whose interests it serves and whose it forecloses, and where its internal contradictions are most exposed: [paste text, argument, or context here]",
-      },
-      {
-        kicker: "Expose",
         title: "Denaturalize the Ideology",
         description: "Hand over a text, policy, or cultural form and get back a critique of its ideological function: what it presents as natural, what it conceals, and what a demystified account reveals.",
         prompt: "Critique the ideological function of [text / policy / cultural form], identifying what it presents as natural or inevitable, what social relations it conceals, how it interpellates its subjects, and what a demystified account of its conditions of production reveals: [paste text, argument, or context here]",
@@ -1493,6 +1487,12 @@
         title: "Reframe the Disability",
         description: "Hand over a practice, policy, or design and get back a disability-studies analysis: medical vs social model, what counts as normal, whose bodies are accommodated, and what a crip perspective reveals.",
         prompt: "Reframe [practice / policy] through disability studies, identifying whether it operates through a medical or social model, what it treats as normal and what as deviant, whose bodies and minds are accommodated and whose are excluded, and what a crip perspective reveals about its assumptions: [paste text, description, or context here]",
+      },
+      {
+        kicker: "Read",
+        title: "Read the Artifact",
+        description: "Hand over a practice, policy, or design and get back a disability-studies analysis: medical vs social model, what counts as normal, whose bodies are accommodated, and what a crip perspective reveals.",
+        prompt: "Read [technology / media form / artifact] as a text, attending to its forms, conventions, material affordances, and constraints, to uncover what it enables or forecloses, as well as what assumptions, subject positions, and power relations it encodes and circulates within wider discourses: [paste text, description, or context here]",
       },
       {
         kicker: "Analyze",
@@ -2286,7 +2286,7 @@
         grid.classList.add("is-expanded");
         elements.messages.classList.add("is-gallery");
         grid.innerHTML = "";
-        allPrompts.forEach(starter => grid.appendChild(makeCard(starter, true)));
+        [...allPrompts].sort(() => Math.random() - 0.5).forEach(starter => grid.appendChild(makeCard(starter, true)));
         elements.messages.scrollTop = 0;
 
       } else if (view === "index") {
