@@ -1206,13 +1206,13 @@
         kicker: "Screenwriting",
         title: "Craft the Screenplay",
         description: "Turn a premise into a scene or short script, with character established through action and dialogue and tension built according to the conventions of the form.",
-        prompt: "Write a screenplay script for [genre / format / platform], establishing character through action and dialogue, building scene-level tension, observing the visual grammar of the form, and calibrating pace and structure to the demands of the medium: [paste premise, characters, setting, or an existing scene here]",
+        prompt: "Write a screenplay script, establishing character through action and dialogue, building scene-level tension, observing the visual grammar of the form, and calibrating pace and structure to the demands of the medium: [paste premise, characters, setting, genre, format, platform, or an existing scene here]",
       },
       {
         kicker: "Speculative Fiction",
         title: "Imagine the Speculative",
         description: "Develop a speculative premise — technological, social, or counterfactual — into a world with internal logic, character pressure, and a lived-in scene.",
-        prompt: "Develop a speculative fiction premise for [concept / technology / social change / historical counterfactual], building out the internal logic of the world, the pressure it puts on its characters, and a scene or passage that makes it feel lived-in: [paste ideas, fragments, or constraints here]",
+        prompt: "Develop a speculative fiction premise about [concept / technology / social change / historical counterfactual], building out the internal logic of the world, the pressure it puts on its characters, and a scene or passage that makes it feel lived-in: [paste ideas, fragments, or constraints here]",
       },
       {
         kicker: "Grant Writing",
@@ -1808,22 +1808,25 @@
       }
 
       const reservedUserOverhead = 8;
-      const remainingForHistoryAndUser = Math.max(1, inputTokenBudget - usedTokens);
-      let availableForUser = Math.max(1, remainingForHistoryAndUser - reservedUserOverhead);
 
-      const historyCopy = [...state.history];
-      while (historyCopy.length) {
-        const candidate = historyCopy[0];
-        const cost = messageTokenCost(candidate);
-        if (usedTokens + cost + reservedUserOverhead > inputTokenBudget) {
-          historyCopy.shift();
-          continue;
+      // Try to include the last N complete turns (2 msgs each), capped at 4 turns.
+      // Cascade down: 8 → 6 → 4 → 2 → 0 messages, never splitting a turn.
+      let historySlice = [];
+      for (const sliceSize of [8, 6, 4, 2, 0]) {
+        const candidate = state.history.slice(-sliceSize);
+        const sliceCost = candidate.reduce((sum, m) => sum + messageTokenCost(m), 0);
+        if (usedTokens + sliceCost + reservedUserOverhead <= inputTokenBudget) {
+          historySlice = candidate;
+          break;
         }
-        outgoing.push(candidate);
-        usedTokens += cost;
-        availableForUser = Math.max(1, inputTokenBudget - usedTokens - reservedUserOverhead);
-        historyCopy.shift();
       }
+
+      for (const msg of historySlice) {
+        outgoing.push(msg);
+        usedTokens += messageTokenCost(msg);
+      }
+
+      let availableForUser = Math.max(1, inputTokenBudget - usedTokens - reservedUserOverhead);
 
       const trimmedUserText = trimToEstimatedTokens(userText, availableForUser);
       const userMessage = {
