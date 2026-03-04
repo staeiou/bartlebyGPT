@@ -985,6 +985,10 @@
         gap: 10px;
       }
 
+      .suggestion-grid.is-compact-mobile:not(.is-expanded) .suggestion-card:nth-child(n + 3) {
+        display: none;
+      }
+
       .suggestion-kicker {
         display: none;
       }
@@ -2194,6 +2198,26 @@
       elements.messages.classList.remove("is-welcome");
     }
 
+    function updateWelcomeCardFit() {
+      const shell = elements.messages.querySelector(".welcome-shell");
+      if (!shell) return;
+      const grid = shell.querySelector(".suggestion-grid");
+      const toggleBar = shell.querySelector(".prompt-view-toggles");
+      if (!grid || !toggleBar) return;
+
+      grid.classList.remove("is-compact-mobile");
+
+      if (!window.matchMedia("(max-width: 940px)").matches || grid.classList.contains("is-expanded")) {
+        return;
+      }
+
+      const messagesRect = elements.messages.getBoundingClientRect();
+      const toggleRect = toggleBar.getBoundingClientRect();
+      if (toggleRect.bottom > messagesRect.bottom) {
+        grid.classList.add("is-compact-mobile");
+      }
+    }
+
     function renderWelcome() {
       if (state.history.length || elements.messages.querySelector(".message-row")) return;
 
@@ -2241,6 +2265,7 @@
       shell.appendChild(grid);
       shell.appendChild(toggleBar);
       elements.messages.appendChild(shell);
+      requestAnimationFrame(updateWelcomeCardFit);
     }
 
     function makeCard(starter, expanded) {
@@ -2287,6 +2312,7 @@
       if (view === "cards") {
         cardsBtn.classList.add("is-active");
         grid.classList.add("is-expanded");
+        grid.classList.remove("is-compact-mobile");
         elements.messages.classList.add("is-gallery");
         grid.innerHTML = "";
         [...allPrompts].sort(() => Math.random() - 0.5).forEach(starter => grid.appendChild(makeCard(starter, true)));
@@ -2448,6 +2474,10 @@
 
       observer.observe(document.getElementById("messages"), { childList: true, subtree: false });
     })();
+
+    window.addEventListener("resize", () => {
+      requestAnimationFrame(updateWelcomeCardFit);
+    });
 
     function clearChat() {
       if (state.busy) return;
