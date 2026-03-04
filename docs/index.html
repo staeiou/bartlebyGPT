@@ -396,7 +396,164 @@
       color: inherit;
       cursor: pointer;
       box-shadow: 0 16px 40px rgba(22, 18, 10, 0.06);
-      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, opacity 400ms ease;
+    }
+
+    .suggestion-card.dissolving {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .suggestion-kicker {
+      margin: 0;
+      font-family: "EB Garamond", Georgia, serif;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      color: var(--muted);
+      opacity: 0;
+      max-height: 0;
+      overflow: hidden;
+      transition: opacity 200ms ease, max-height 200ms ease;
+    }
+
+    .suggestion-grid.is-expanded .suggestion-kicker {
+      opacity: 1;
+      max-height: 2em;
+    }
+
+    .suggestion-grid.is-expanded {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .prompt-view-toggles {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .prompt-view-toggle {
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: "EB Garamond", Georgia, serif;
+      font-style: italic;
+      font-size: 24px;
+      color: #2a2a2a;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+      opacity: 0.85;
+      transition: opacity 160ms ease;
+    }
+
+    .prompt-view-toggle:hover {
+      opacity: 1;
+    }
+
+    .prompt-view-toggle.is-active {
+      opacity: 0.25;
+      cursor: default;
+      pointer-events: none;
+    }
+
+    .prompt-view-sep {
+      font-family: "EB Garamond", Georgia, serif;
+      font-style: italic;
+      font-size: 24px;
+      color: #2a2a2a;
+      opacity: 0.3;
+      user-select: none;
+    }
+
+    .messages.is-gallery {
+      justify-content: flex-start;
+    }
+
+    .prompt-index {
+      width: 100%;
+      min-width: 0;
+      overflow: hidden;
+      display: grid;
+      gap: 28px;
+    }
+
+    .index-group {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .index-kicker-heading {
+      margin: 0 0 6px;
+      font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      font-size: clamp(28px, 3.5vw, 40px);
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: rgba(28, 26, 20, 0.88);
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .index-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 1px;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .index-list li {
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .index-item {
+      display: block;
+      width: 100%;
+      min-width: 0;
+      background: none;
+      border: none;
+      padding: 5px 5px 5px 12px;
+      font-family: "EB Garamond", Georgia, serif;
+      font-size: 21px;
+      font-weight: 400;
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+      border-left: 2px solid transparent;
+      transition: border-color 120ms ease, padding-left 120ms ease, color 120ms ease;
+      line-height: 1.4;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      box-sizing: border-box;
+    }
+
+    .index-item:hover {
+      border-left-color: var(--accent-dim);
+      padding-left: 18px;
+      color: var(--accent);
+    }
+
+    .index-item-title {
+      font-weight: 600;
+      font-style: italic;
+    }
+
+    .index-item-sep {
+      font-weight: 400;
+      opacity: 0.5;
+      margin: 0 3px;
+    }
+
+    .index-item-desc {
+      font-weight: 400;
+      color: rgba(28, 26, 20, 0.88);
     }
 
     .suggestion-card:hover,
@@ -413,19 +570,19 @@
     .suggestion-title {
       margin: 0;
       font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
-      font-size: 18px;
+      font-size: 20px;
       line-height: 1.1;
       font-weight: 600;
-      color: rgba(28, 26, 20, 0.88);
+      color: rgba(28, 26, 20, 0.95);
     }
 
     .suggestion-prompt {
       margin: 0;
       font-family: "EB Garamond", "Palatino Linotype", "Book Antiqua", Georgia, serif;
-      font-size: 18px;
+      font-size: 19px;
       font-weight: 500;
       line-height: 1.3;
-      color: rgba(28, 26, 20, .85);
+      color: rgba(28, 26, 20, 0.92);
     }
 
     .message-row {
@@ -822,9 +979,14 @@
         font-size: 24px;
       }
 
-      .suggestion-grid {
+      .suggestion-grid,
+      .suggestion-grid.is-expanded {
         grid-template-columns: 1fr;
         gap: 10px;
+      }
+
+      .suggestion-kicker {
+        display: none;
       }
 
       .suggestion-card {
@@ -1045,32 +1207,47 @@
           </div>
         </div>
 
-        <div class="field-grid">
-          <div class="field">
-            <label>
-              WATTS_IDLE
-              <input id="watts-idle" type="number" min="0" step="1">
-            </label>
-          </div>
-          <div class="field">
-            <label>
-              WATTS_ACTIVE
-              <input id="watts-active" type="number" min="0" step="1">
-            </label>
-          </div>
-          <div class="field">
-            <label>
-              <span id="connection-toggle" class="connection-toggle">gCO₂/Wh</span>
-              <input id="gco2-per-wh" type="number" min="0" step="0.001">
-            </label>
-          </div>
-          <div class="field">
-            <label>
-              COST_PER_HR ($)
-              <input id="cost-per-hr" type="number" min="0" step="0.01">
-            </label>
-          </div>
-        </div>
+	        <div class="field-grid">
+	          <div class="field">
+	            <label>
+	              POWER_PROFILE
+	              <select id="power-profile">
+	                <option value="home-sd">Home (San Diego, Quadro RTX 4000)</option>
+	                <option value="spokane-dc">TierPoint (Spokane, WA data center)</option>
+	              </select>
+	            </label>
+	          </div>
+	          <div class="field">
+	            <label>
+	              WATTS_IDLE
+	              <input id="watts-idle" type="number" min="0" step="1">
+	            </label>
+	          </div>
+	          <div class="field">
+	            <label>
+	              WATTS_ACTIVE
+	              <input id="watts-active" type="number" min="0" step="1">
+	            </label>
+	          </div>
+	          <div class="field">
+	            <label>
+	              <span id="connection-toggle" class="connection-toggle">gCO₂/Wh</span>
+	              <input id="gco2-per-wh" type="number" min="0" step="0.001">
+	            </label>
+	          </div>
+	          <div class="field" id="cost-per-hr-field">
+	            <label>
+	              COST_PER_HR ($)
+	              <input id="cost-per-hr" type="number" min="0" step="0.01">
+	            </label>
+	          </div>
+	          <div class="field" id="cost-per-kwh-field" hidden>
+	            <label>
+	              COST_PER_KWH ($)
+	              <input id="cost-per-kwh" type="number" min="0" step="0.01">
+	            </label>
+	          </div>
+	        </div>
 
         <details id="connection-settings" class="connection-settings">
           <summary></summary>
@@ -1111,17 +1288,13 @@
 
   <p id="mobile-hallucination" class="mobile-hallucination">A <a href="https://stuartgeiger.com" target="_blank" rel="noreferrer">Stuart Geiger</a> Hallucination</p>
 
-  <div class="power-modal-backdrop" id="power-modal-backdrop">
-    <div class="power-modal" role="dialog" aria-modal="true">
-      <button class="power-modal-close" id="power-modal-close" aria-label="Close">×</button>
-      <h2>About these figures</h2>
-      <p>These figures reflect the live power consumption of BartlebyGPT's server, which runs on one GPU (RTX A4000) in a 4-GPU server at <a href="https://www.tierpoint.com/data-centers/washington/spokane/">TierPoint's Spokane, WA data center</a>. The server directly pulls ~1.2 Kilowatts (KW) when idle and ~2.2KW when at full load, but we are only renting 1/4th of it. This single GPU and 1/4th of a server can generate around 15 replies in parallel at a time. </p>
-      <p><strong>Watts</strong> is the estimated total draw for all current BartlebyGPT users combined. We start with our 300W base 1/4th share of the server, then add the GPU's actual live measured wattage. The RTX A4000 directly pulls ~15W when idle and ~150W at full load, but also generates heat and network traffic. The 1/4th server + live 1 GPU load is multiplied by 1.35× to account for energy costs in cooling, networking, and other data center infrastructure overhead (<a href="https://en.wikipedia.org/wiki/Power_usage_effectiveness">PUE factor</a>). For reference, a small space heater, air conditioner window unit, or large TV and sound system pulls ~500-1000W</p>
-      <p><strong>gCO₂/hr</strong> is the estimated carbon cost of that total estimated power draw: watts × grid carbon intensity. Avista Power serves Spokane with <a href="https://www.myavista.com/about-us/about-our-energy-mix">a ~60% renewable power mix</a>, giving an estimated <a href="https://www.epa.gov/energy/greenhouse-gas-equivalencies-calculator">emissions factor of ~0.3 gCO₂/Wh</a>, although this can be higher if the data center burns its own fossil fuel generators when grid capacity is low. This does not include emissions from hardware manufacturing, end-of-life disposal, data center workers' commutes, or private jets to lobby politicians about data center regulations.</p>
-      <p><strong>$/hr</strong> is our rental cost for this GPU and our quarter-server share, accrued continuously whether idle or busy, shared across all users of the site.</p>
-      <p>All three parameters are adjustable under <em>Advanced</em>.</p>
-    </div>
-  </div>
+	  <div class="power-modal-backdrop" id="power-modal-backdrop">
+	    <div class="power-modal" role="dialog" aria-modal="true">
+	      <button class="power-modal-close" id="power-modal-close" aria-label="Close">×</button>
+	      <h2 id="power-modal-title">About these figures</h2>
+	      <div id="power-modal-body"></div>
+	    </div>
+	  </div>
 
   <script>
     window.goatcounter = window.goatcounter || {};
@@ -1142,24 +1315,65 @@
     const MODEL_MAX_CONTEXT_TOKENS = 2048;
     const CHARS_PER_TOKEN_ESTIMATE = 2.6;
     const TOKEN_SAFETY_MARGIN = 32;
-    const defaults = {
-      baseUrl: "",
-      modelName: "",
-      apiKey: "",
-      systemPrompt: "",
-      maxInputChars: 2000,
-      maxNewTokens: 512,
-      requestTimeout: 600,
-      temperature: 0.7,
-      topP: 0.9,
-      wattsIdle: 300,
-      wattsActive: 450,
-      gco2PerWh: 0.30,
-      costPerHr: 0.09,
-    };
+	    const defaults = {
+	      baseUrl: "",
+	      modelName: "",
+	      apiKey: "",
+	      systemPrompt: "",
+	      maxInputChars: 2000,
+	      maxNewTokens: 512,
+	      requestTimeout: 600,
+	      temperature: 0.7,
+	      topP: 0.9,
+	      powerProfile: "home-sd",
+	      wattsIdle: 120,
+	      wattsActive: 260,
+	      gco2PerWh: 0.200,
+	      costPerHr: 0.09,
+	      costPerKwh: 0.35,
+	    };
+
+	    const POWER_PROFILES = {
+	      "home-sd": {
+	        label: "Home (San Diego, Quadro RTX 4000)",
+	        costMode: "per-kwh",
+	        overheadMultiplier: 1.0,
+	        defaults: {
+	          wattsIdle: 120,
+	          wattsActive: 260,
+	          gco2PerWh: 0.200,
+	          costPerKwh: 0.35,
+	        },
+	        modalHtml: [
+	          `<p>These figures reflect the live power consumption of BartlebyGPT's server, which runs in my residential home in San Diego, CA on one GPU (Quadro RTX 4000). The machine pulls ~120W at idle and up to ~300W when under full GPU load. This single GPU can generate around 4–6 replies in parallel at a time.</p>`,
+	          `<p><strong>Watts</strong> is the estimated total draw for all current BartlebyGPT users combined. When idle, we use the configured baseline (~120W). When requests are running, we take that baseline and add the GPU's live measured wattage. This generates a small amount of heat, but San Diego has a mild climate. For reference, a small space heater, air conditioner window unit, or large TV and sound system pulls ~500–1000W.</p>`,
+	          `<p><strong>gCO₂/hr</strong> is the estimated carbon cost of that total estimated power draw: watts × grid carbon intensity. San Diego is served by SDG&amp;E, and I opt into <a href="https://www.sdcommunitypower.org/programs/power-options">San Diego Community Power's PowerOn</a> cleaner energy program. This has an estimated emissions factor of ~0.200 gCO₂/Wh, though this varies with the grid mix and time of day. This does not include emissions from training and fine-tuning the model, manufacturing the hardware, disposing of end-of-life hardware, networking between your device and the server, or other inputs and externalities.</p>`,
+	          `<p><strong>$/hr</strong> is the estimated electricity cost accrued continuously whether idle or busy, shared across all users of the site. It is computed as (Watts ÷ 1000) × the configured electricity rate, based on SDG&amp;E residential rates.</p>`,
+	          `<p>All parameters are adjustable under <em>Advanced</em>.</p>`,
+	        ].join(""),
+	      },
+	      "spokane-dc": {
+	        label: "TierPoint (Spokane, WA data center)",
+	        costMode: "fixed-per-hr",
+	        overheadMultiplier: 1.35,
+	        defaults: {
+	          wattsIdle: 300,
+	          wattsActive: 450,
+	          gco2PerWh: 0.30,
+	          costPerHr: 0.09,
+	        },
+	        modalHtml: [
+	          `<p>These figures reflect the live power consumption of BartlebyGPT's server, which runs on one GPU (RTX A4000) in a 4-GPU server at <a href="https://www.tierpoint.com/data-centers/washington/spokane/">TierPoint's Spokane, WA data center</a>. The server directly pulls ~1.2 Kilowatts (KW) when idle and ~2.2KW when at full load, but we are only renting 1/4th of it. This single GPU and 1/4th of a server can generate around 15 replies in parallel at a time.</p>`,
+	          `<p><strong>Watts</strong> is the estimated total draw for all current BartlebyGPT users combined. We start with our 300W base 1/4th share of the server, then add the GPU's actual live measured wattage. The RTX A4000 directly pulls ~15W when idle and ~150W at full load, but also generates heat and network traffic. The 1/4th server + live 1 GPU load is multiplied by 1.35× to account for energy costs in cooling, networking, and other data center infrastructure overhead (<a href="https://en.wikipedia.org/wiki/Power_usage_effectiveness">PUE factor</a>). For reference, a small space heater, air conditioner window unit, or large TV and sound system pulls ~500-1000W.</p>`,
+	          `<p><strong>gCO₂/hr</strong> is the estimated carbon cost of that total estimated power draw: watts × grid carbon intensity. Avista Power serves Spokane with <a href="https://www.myavista.com/about-us/about-our-energy-mix">a ~60% renewable power mix</a>, giving an estimated <a href="https://www.epa.gov/energy/greenhouse-gas-equivalencies-calculator">emissions factor of ~0.3 gCO₂/Wh</a>, although this can be higher if the data center burns its own fossil fuel generators when grid capacity is low. This does not include emissions from hardware manufacturing, end-of-life disposal, data center workers' commutes, or private jets to lobby politicians about data center regulations.</p>`,
+	          `<p><strong>$/hr</strong> is our rental cost for this GPU and our quarter-server share, accrued continuously whether idle or busy, shared across all users of the site.</p>`,
+	          `<p>All parameters are adjustable under <em>Advanced</em>.</p>`,
+	        ].join(""),
+	      },
+	    };
 
     const ETHICS_PROMPT = {
-      kicker: "Moral Philosophy",
+      kicker: "Reason",
       title: "Resolve the Dilemma",
       description: "Hand over a real or hypothetical moral dilemma and get back the competing obligations laid out, the strongest case for each horn, where the genuine crux lies, and a defended resolution.",
       prompt: "Resolve the moral dilemma of [situation / choice / conflict], identifying the competing obligations at stake, the strongest case for each course of action, where the genuine crux lies, and a defended all-things-considered resolution: [paste the situation, constraints, or relevant details here]",
@@ -1167,196 +1381,232 @@
 
     const STARTER_POOL = [
       {
-        kicker: "Ideology Critique",
+        kicker: "Expose",
         title: "Critique the Ideology",
         description: "Hand over a text, movement, institution, or claim and get back an immanent critique: what it assumes, what it occludes, whose interests it serves, and where its internal contradictions lie.",
         prompt: "Critique the ideology of [text / movement / institution / claim], identifying its constitutive assumptions, what it naturalizes or occludes, whose interests it serves and whose it forecloses, and where its internal contradictions are most exposed: [paste text, argument, or context here]",
       },
       {
-        kicker: "Ideology Critique",
+        kicker: "Expose",
         title: "Denaturalize the Ideology",
         description: "Hand over a text, policy, or cultural form and get back a critique of its ideological function: what it presents as natural, what it conceals, and what a demystified account reveals.",
         prompt: "Critique the ideological function of [text / policy / cultural form], identifying what it presents as natural or inevitable, what social relations it conceals, how it interpellates its subjects, and what a demystified account of its conditions of production reveals: [paste text, argument, or context here]",
       },
       {
-        kicker: "Deconstruction",
+        kicker: "Read",
         title: "Deconstruct the Discourse",
         description: "Hand over a text, argument, or discourse and get back a deconstructive reading: the binary oppositions it depends on, the exclusions they naturalize, and what its own contradictions reveal.",
         prompt: "Deconstruct [text / discourse], identifying the binary oppositions it depends on, showing how the privileged term is contaminated by what it excludes, tracing how these hierarchies naturalize particular material interests or power relations, and locating where the discourse undermines its own foundations: [paste text, argument, or context here]",
       },
       {
-        kicker: "Critical Theory",
+        kicker: "Expose",
         title: "Critique the Institution",
         description: "Hand over an institution, discourse, or practice and get back a critical analysis: key assumptions, who benefits, what harms and exclusions it produces, contradictions in its justifications, and what a genuine reckoning demands.",
         prompt: "Critique [institution / discourse], unpacking its key concepts and assumptions, identifying who benefits and who bears costs, surfacing the harms and exclusions it produces or legitimizes, highlighting contradictions in common justifications, and assessing what a genuine reckoning demands: [paste text, argument, or context here]",
       },
       {
-        kicker: "Science & Technology Studies",
+        kicker: "Analyze",
         title: "Open the Black Box",
         description: "Hand over a technology or scientific claim and get back an STS-informed analysis: the social and political relations embedded in its design, whose knowledge counts, and what a symmetrical account reveals.",
         prompt: "Open the black box of [technology / scientific claim], tracing the social, material, and political relations embedded in its design, identifying whose knowledge counts and whose is excluded, and showing what a symmetrical account of its construction reveals: [paste text, description, or context here]",
       },
       {
-        kicker: "Genealogy",
+        kicker: "Trace",
         title: "Historicize the Problem",
         description: "Hand over a concept, category, or practice and get back a genealogy: the contingent conditions of its emergence, the interests that shaped it, the alternatives it displaced, and what that history reveals about the present.",
         prompt: "Historicize [concept / practice], tracing the contingent conditions under which it emerged, the interests and conflicts that shaped it, the alternatives it displaced, and what its genealogy reveals about the present: [paste text, description, or context here]",
       },
       {
-        kicker: "Power Analysis",
+        kicker: "Analyze",
         title: "Map the Power",
         description: "Hand over an institution, practice, or discourse and get back a Foucauldian analysis: how subjects are produced, what knowledge authorizes its operations, where resistance emerges, and what its governmental logic reveals.",
         prompt: "Map the relations of power operating through [institution / discourse], identifying how subjects are produced, what forms of knowledge authorize its operations, where resistance emerges, and what its disciplinary or governmental logic makes visible: [paste text, description, or context here]",
       },
       {
-        kicker: "Political Economy",
+        kicker: "Analyze",
         title: "Read the Economy",
         description: "Hand over an industry, policy, or market and get back a political-economic analysis: whose labor is extracted, what accumulation strategies it enables, what it externalizes, and whose interests it serves.",
         prompt: "Read the political economy of [industry / policy], identifying whose labor is extracted and whose is valued, what accumulation strategies it enables, what it externalizes, and what structural interests its arrangements serve: [paste text, description, or context here]",
       },
       {
-        kicker: "Gender & Queer Theory",
+        kicker: "Unsettle",
         title: "Trouble the Category",
         description: "Hand over a category, identity, or norm and get back a queer-theoretical analysis: how it is produced and policed, what performances sustain it, whose lives it excludes, and what its instability reveals.",
         prompt: "Trouble [category / norm], identifying how it is produced and policed, what performances sustain it, whose bodies and lives it excludes or pathologizes, and what its instability reveals about the social order it props up: [paste text, description, or context here]",
       },
       {
-        kicker: "Epistemology",
+        kicker: "Unsettle",
         title: "Situate the Knowledge",
         description: "Hand over a knowledge claim, methodology, or form of expertise and get back a standpoint analysis: from whose position it speaks, what it cannot see, whose experience it generalizes, and what perspectives it forecloses.",
         prompt: "Situate [knowledge claim / methodology], identifying from whose standpoint it speaks, what it can and cannot see from that position, whose experience it generalizes, and what partial perspectives it forecloses: [paste text, description, or context here]",
       },
       {
-        kicker: "Actor-Network Theory",
+        kicker: "Trace",
         title: "Trace the Network",
         description: "Hand over an assemblage, system, or controversy and get back an ANT-informed analysis: the human and nonhuman actors holding it together, the translations between them, and what breaks when you pull one out.",
         prompt: "Trace the network of [assemblage / system / controversy], following the human and nonhuman actors that hold it together, identifying the translations and enrollments that sustain it, and showing what breaks or becomes visible when a connection is severed: [paste text, description, or context here]",
       },
       {
-        kicker: "Cultural Studies",
+        kicker: "Read",
         title: "Diagnose the Culture",
         description: "Hand over a cultural form, media text, or moment of common sense and get back a cultural-studies analysis: encoding and decoding, hegemonic meaning-making, and where contested readings emerge.",
         prompt: "Diagnose [cultural form / media text], identifying how meaning is encoded and decoded, what hegemonic common sense it reinforces or contests, whose cultural authority it draws on, and where oppositional readings emerge: [paste text, description, or context here]",
       },
       {
-        kicker: "Postcolonial Theory",
+        kicker: "Trace",
         title: "Unsettle the Archive",
         description: "Hand over an archive, canon, or historical narrative and get back a postcolonial reading: what it preserves and silences, whose history it authorizes, and what epistemic violence it performs.",
         prompt: "Unsettle [archive / canon / narrative], identifying what it preserves and what it silences, whose history it authorizes and whose it erases, what epistemic violence it performs, and what counternarratives its gaps make possible: [paste text, description, or context here]",
       },
       {
-        kicker: "Ethnographic Analysis",
+        kicker: "Unsettle",
         title: "Estrange the Familiar",
         description: "Hand over a practice, ritual, or institution taken for granted and get back an ethnographic defamiliarization: the implicit rules, the social work being done, and what becomes visible when you treat the obvious as strange.",
         prompt: "Estrange [practice / institution], making the taken-for-granted strange, surfacing the implicit rules and social logics that organize it, identifying what ritual or symbolic work it performs, and showing what becomes visible when the obvious is treated as anthropologically remarkable: [paste text, description, or context here]",
       },
       {
-        kicker: "Critical Finance",
+        kicker: "Expose",
         title: "Follow the Money",
         description: "Hand over an industry, policy, or institution and get back a critical fiscal analysis: where capital flows, who is subsidized, what is financialized, and whose risks are socialized.",
         prompt: "Follow the money through [industry / policy], tracing where capital flows and where it accumulates, identifying who is subsidized and who bears the costs, what is financialized and what is devalued, and whose risks are socialized while whose profits are privatized: [paste text, description, or context here]",
       },
       {
-        kicker: "World-Systems Analysis",
+        kicker: "Trace",
         title: "Scale the Analysis",
         description: "Hand over a development pattern, trade relation, or spatial arrangement and get back a world-systems analysis: core-periphery dynamics, uneven development, and what spatial fixes are at work.",
         prompt: "Scale the analysis of [development pattern / trade relation], identifying core-periphery dynamics, tracing patterns of uneven development, locating the spatial fixes and geographic displacements that sustain accumulation, and showing what the global structure reveals that the local frame conceals: [paste text, description, or context here]",
       },
       {
-        kicker: "Affect Theory",
+        kicker: "Read",
         title: "Theorize the Affect",
         description: "Hand over a cultural moment, text, or political formation and get back an affect-theoretical reading: what circulates beneath argument, what sticks, and what structures of feeling organize the moment.",
         prompt: "Theorize the affect operating through [cultural moment / text], identifying what circulates beneath explicit argument, what emotional intensities stick and to whom, what structures of feeling organize the moment, and how affective economies distribute attachment and aversion: [paste text, description, or context here]",
       },
       {
-        kicker: "Disability Studies",
+        kicker: "Unsettle",
         title: "Reframe the Disability",
         description: "Hand over a practice, policy, or design and get back a disability-studies analysis: medical vs social model, what counts as normal, whose bodies are accommodated, and what a crip perspective reveals.",
         prompt: "Reframe [practice / policy] through disability studies, identifying whether it operates through a medical or social model, what it treats as normal and what as deviant, whose bodies and minds are accommodated and whose are excluded, and what a crip perspective reveals about its assumptions: [paste text, description, or context here]",
       },
       {
-        kicker: "New Materialism",
+        kicker: "Analyze",
         title: "Materialize the Discourse",
         description: "Hand over a phenomenon or debate and get back a new-materialist reading: matter's agency, human-nonhuman entanglements, and what discourse-only accounts miss.",
         prompt: "Materialize [phenomenon / debate], attending to matter's agency and resistance, tracing human-nonhuman entanglements, identifying what discourse-only accounts miss, and showing what becomes thinkable when materiality is taken seriously as a co-constitutive force: [paste text, description, or context here]",
       },
       {
-        kicker: "Decolonial Epistemology",
+        kicker: "Trace",
         title: "Provincialize the Universal",
         description: "Hand over a claim to universality and get back a decolonial reading: whose particular masquerades as universal, what knowledge systems it displaces, and what thinking from the margins reveals.",
         prompt: "Provincialize [universal claim / framework], identifying whose particular experience masquerades as universal, what knowledge systems and lifeworlds it displaces, what colonial matrix of power it reproduces, and what thinking from the margins and the underside of modernity reveals: [paste text, description, or context here]",
       },
       {
-        kicker: "Narrative Analysis",
+        kicker: "Read",
         title: "Narrate the Crisis",
         description: "Hand over a crisis or emergency and get back a critical narrative analysis: how the crisis is constructed, who gets to name it, what it authorizes, and whose crises are rendered invisible.",
         prompt: "Narrate [crisis / emergency], identifying how it is discursively constructed, who gets to name and frame it, what responses it authorizes and forecloses, what prior conditions it naturalizes as background, and whose ongoing crises are rendered invisible by its urgency: [paste text, description, or context here]",
       },
       {
-        kicker: "Political Ecology",
+        kicker: "Analyze",
         title: "Ecologize the Question",
         description: "Hand over an environmental issue, resource conflict, or land use and get back a political-ecology analysis: nature-society entanglements, metabolic rifts, and who bears the ecological costs.",
         prompt: "Ecologize [environmental issue / resource conflict], tracing nature-society entanglements, identifying metabolic rifts and ecological contradictions, showing how environmental costs are distributed along lines of race, class, and geography, and locating what political arrangements the category of 'nature' conceals: [paste text, description, or context here]",
       },
       {
-        kicker: "Critical Data Studies",
+        kicker: "Expose",
         title: "Interrogate the Data",
         description: "Hand over a dataset, metric, or classification system and get back a critical data analysis: what is counted and what is not, what categories enforce, and whose world the data encodes.",
         prompt: "Interrogate [dataset / metric / classification], identifying what is counted and what is rendered invisible, what political work the categories perform, whose world the data encodes and whose it erases, and what the infrastructure of measurement assumes about the phenomena it claims to represent: [paste text, description, or context here]",
       },
       {
-        kicker: "Marxist Geography",
+        kicker: "Trace",
         title: "Ground the Abstraction",
         description: "Hand over an abstract economic or political category and get back a materialist geography: how abstractions land on concrete bodies and places, what spatial fixes are at work, and whose ground is sacrificed.",
         prompt: "Ground [economic category / policy abstraction], showing how it lands on concrete bodies, communities, and places, identifying what spatial fixes and geographic displacements it requires, whose ground is sacrificed to sustain it, and what the view from the ground reveals that the abstraction conceals: [paste text, description, or context here]",
       },
       {
-        kicker: "Critical Race Theory",
+        kicker: "Expose",
         title: "Surface the Racial Logic",
         description: "Hand over a law, policy, institution, or discourse and get back a CRT analysis: how race is constructed and operationalized, what colorblind frameworks obscure, whose interests racial arrangements serve, and what counternarratives reveal.",
         prompt: "Surface the racial logic of [law / institution], identifying how race is constructed and operationalized within it, what colorblind or post-racial frameworks obscure, how intersecting structures of class, gender, and citizenship compound its effects, and what counternarratives and lived experience reveal about its operations: [paste text, description, or context here]",
       },
       {
-        kicker: "Literary Criticism",
+        kicker: "Read",
         title: "Frame the Interpretation",
         description: "Turn a text, a passage, or even a fragment into a serious interpretive claim with structure, stakes, and close reading.",
         prompt: "Produce a rigorous literary analysis of [text / passage / author], identifying the central interpretive problem, situating it among plausible readings, and drafting a structured argument with close reading, counterreadings, and a defensible thesis: [paste text or notes here]",
       },
       {
-        kicker: "Legal Analysis",
+        kicker: "Reason",
         title: "Draft the Legal Brief",
         description: "Hand over the facts, issue, and forum, then ask for a full first-pass research memo with authorities and competing arguments.",
         prompt: "Prepare a first-pass legal research memorandum for a case about [issue, in jurisdiction], identifying the controlling authorities, governing standards, strongest arguments for each side, likely procedural posture, and a reasoned recommendation: [paste facts, authorities, or notes here]",
       },
       {
-        kicker: "Research Synthesis",
+        kicker: "Administrative",
         title: "Survey the Field",
         description: "Make it sound entirely reasonable to outsource the whole review article: sources, patterns, debates, and provisional conclusions.",
         prompt: "Conduct a systematic literature review, bibliometric mapping, and synthetic meta-analysis of the research on [topic], identifying the major schools of thought, influential works, recurring methods, contested findings, and the clearest gaps for future inquiry: [paste sources, abstracts, or notes here]",
       },
       {
-        kicker: "Screenwriting",
+        kicker: "Fiction",
         title: "Craft the Screenplay",
         description: "Turn a premise into a scene or short script, with character established through action and dialogue and tension built according to the conventions of the form.",
         prompt: "Write a screenplay script, establishing character through action and dialogue, building scene-level tension, observing the visual grammar of the form, and calibrating pace and structure to the demands of the medium: [paste premise, characters, setting, genre, format, platform, or an existing scene here]",
       },
       {
-        kicker: "Speculative Fiction",
+        kicker: "Fiction",
         title: "Imagine the Speculative",
         description: "Develop a speculative premise — technological, social, or counterfactual — into a world with internal logic, character pressure, and a lived-in scene.",
         prompt: "Develop a speculative fiction premise about [concept / technology / social change / historical counterfactual], building out the internal logic of the world, the pressure it puts on its characters, and a scene or passage that makes it feel lived-in: [paste ideas, fragments, or constraints here]",
       },
       {
-        kicker: "Grant Writing",
+        kicker: "Administrative",
         title: "Draft the Grant Narrative",
         description: "Turn a project idea into a fundable narrative: significance, innovation, approach, and broader impact in the register of the funder.",
         prompt: "Draft a grant proposal and narrative for [project / funding body / field], articulating the significance of the problem, the innovation of the approach, the feasibility of the plan, and the broader impact of the work in the register and priorities of the funder: [paste project description, aims, or existing draft here]",
       },
       {
-        kicker: "Recommendation",
+        kicker: "Administrative",
         title: "Write the Recommendation",
         description: "Give the facts and get back a draft that is warm, specific, and credible — calibrated to what selection committees in this context actually want to read.",
         prompt: "Write a letter of recommendation for [person / position / program], drawing on the specific evidence provided to make a case that is warm, credible, and particular rather than generic, calibrated to what selection committees in this context are actually looking for: [paste facts, anecdotes, the candidate's materials, or your notes here]",
+      },
+      {
+        kicker: "Administrative",
+        title: "Write the Abstract",
+        description: "Turn a paper, project, or presentation into a tight abstract that does the work: stakes, method, argument, contribution — in the word count and register the venue requires.",
+        prompt: "Write an abstract for [paper / project / presentation] for [venue / word count], articulating the stakes, method, central argument, and contribution in the register the audience expects: [paste draft, notes, or key claims here]",
+      },
+      {
+        kicker: "Administrative",
+        title: "Review the Application",
+        description: "Hand over an application packet and get back a structured review: what is strongest, what is weakest, how it fits the criteria, and a defensible recommendation.",
+        prompt: "Review this application for [position / grant / program], identifying its strongest elements, its weakest, how well it fits the stated criteria, what questions or concerns it raises, and a defensible recommendation with reasoning: [paste application materials, rubric, or evaluation criteria here]",
+      },
+      {
+        kicker: "Fiction",
+        title: "Draft the Chapter",
+        description: "Turn an outline, notes, or a rough draft into a chapter that moves — with scene, voice, pacing, and the pressure the reader needs to feel at this moment in the narrative.",
+        prompt: "Draft a chapter for [novel / work in progress], establishing voice, managing scene and summary, building the pressure the reader needs to feel at this moment in the narrative, and ending with the right kind of tension or release: [paste outline, notes, existing draft, or context here]",
+      },
+      {
+        kicker: "Educate",
+        title: "Explain the Concept",
+        description: "Hand over a concept, theory, or finding and get back a clear, accurate explanation calibrated to a specific audience — with the right analogies, the right level of abstraction, and no false simplifications.",
+        prompt: "Explain [concept / theory / finding] to [audience], calibrating the level of abstraction, choosing analogies that illuminate rather than mislead, and preserving accuracy without condescension: [paste the concept, your notes, or what the audience already knows here]",
+      },
+      {
+        kicker: "Educate",
+        title: "Design the Syllabus",
+        description: "Hand over a course topic, level, and constraints and get back a structured syllabus: learning objectives, unit sequence, key readings, and an assessment structure that aligns with the stated goals.",
+        prompt: "Design a syllabus for [course topic] at [level / institution type], specifying learning objectives, a weekly or unit sequence, key readings or resources, and an assessment structure that aligns with the stated goals: [paste constraints, existing materials, or institutional context here]",
+      },
+      {
+        kicker: "Educate",
+        title: "Write the Explainer",
+        description: "Turn specialist knowledge into prose a smart non-specialist can follow — without dumbing it down or losing what actually matters.",
+        prompt: "Write a clear, accurate explainer on [topic] for [audience / publication type], translating specialist knowledge into prose a smart non-specialist can follow without losing what is genuinely at stake: [paste source material, technical notes, or key claims here]",
       },
     ];
 
@@ -1369,10 +1619,10 @@
       return [pool[0], ETHICS_PROMPT, pool[1], pool[2]];
     }
 
-    const elements = {
-      messages: document.getElementById("messages"),
-      resetChatButton: document.getElementById("reset-chat-button"),
-      statusPill: document.getElementById("status-pill"),
+	    const elements = {
+	      messages: document.getElementById("messages"),
+	      resetChatButton: document.getElementById("reset-chat-button"),
+	      statusPill: document.getElementById("status-pill"),
       input: document.getElementById("message-input"),
       sendButton: document.getElementById("send-button"),
       inputCount: document.getElementById("input-count"),
@@ -1384,26 +1634,32 @@
       maxInputChars: document.getElementById("max-input-chars"),
       maxNewTokens: document.getElementById("max-new-tokens"),
       requestTimeout: document.getElementById("request-timeout"),
-      temperature: document.getElementById("temperature"),
-      topP: document.getElementById("top-p"),
-      wattsIdle: document.getElementById("watts-idle"),
-      wattsActive: document.getElementById("watts-active"),
-      gco2PerWh: document.getElementById("gco2-per-wh"),
-      costPerHr: document.getElementById("cost-per-hr"),
-      powerDisplay: document.getElementById("power-display"),
-      powerWatts: document.getElementById("power-watts"),
-      powerCo2: document.getElementById("power-co2"),
-      powerCost: document.getElementById("power-cost"),
+	      temperature: document.getElementById("temperature"),
+	      topP: document.getElementById("top-p"),
+	      powerProfile: document.getElementById("power-profile"),
+	      wattsIdle: document.getElementById("watts-idle"),
+	      wattsActive: document.getElementById("watts-active"),
+	      gco2PerWh: document.getElementById("gco2-per-wh"),
+	      costPerHr: document.getElementById("cost-per-hr"),
+	      costPerKwh: document.getElementById("cost-per-kwh"),
+	      costPerHrField: document.getElementById("cost-per-hr-field"),
+	      costPerKwhField: document.getElementById("cost-per-kwh-field"),
+	      powerDisplay: document.getElementById("power-display"),
+	      powerWatts: document.getElementById("power-watts"),
+	      powerCo2: document.getElementById("power-co2"),
+	      powerCost: document.getElementById("power-cost"),
       powerActiveCount: document.getElementById("power-active-count"),
       activeCountHeader: document.getElementById("active-count-header"),
       powerInfoBtn: document.getElementById("power-info-btn"),
       advancedPanel: document.getElementById("advanced-panel"),
       connectionSettings: document.getElementById("connection-settings"),
-      connectionToggle: document.getElementById("connection-toggle"),
-      mobileHallucination: document.getElementById("mobile-hallucination"),
-      powerModalBackdrop: document.getElementById("power-modal-backdrop"),
-      powerModalClose: document.getElementById("power-modal-close"),
-    };
+	      connectionToggle: document.getElementById("connection-toggle"),
+	      mobileHallucination: document.getElementById("mobile-hallucination"),
+	      powerModalBackdrop: document.getElementById("power-modal-backdrop"),
+	      powerModalClose: document.getElementById("power-modal-close"),
+	      powerModalTitle: document.getElementById("power-modal-title"),
+	      powerModalBody: document.getElementById("power-modal-body"),
+	    };
 
     const state = {
       busy: false,
@@ -1499,38 +1755,69 @@
       );
     }
 
-    function loadSettings() {
-      try {
-        const raw = localStorage.getItem(SETTINGS_KEY);
-        if (!raw) return { ...defaults };
-        return { ...defaults, ...JSON.parse(raw) };
-      } catch (_err) {
-        return { ...defaults };
-      }
-    }
+	    function loadSettings() {
+	      try {
+	        const raw = localStorage.getItem(SETTINGS_KEY);
+	        if (!raw) return { ...defaults };
+	        const parsed = JSON.parse(raw);
+	        const merged = { ...defaults, ...parsed };
+	        let needsSave = false;
 
-    function saveSettings() {
-      const settings = getSettings();
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-    }
+	        if (!merged.powerProfile || !POWER_PROFILES[merged.powerProfile]) {
+	          merged.powerProfile = defaults.powerProfile;
+	          needsSave = true;
+	        }
 
-    function getSettings() {
-      return {
-        baseUrl: elements.baseUrl.value.trim().replace(/\/+$/, ""),
-        modelName: elements.modelName.value.trim(),
-        apiKey: elements.apiKey.value.trim(),
-        systemPrompt: elements.systemPrompt.value,
-        maxInputChars: coercePositiveInt(elements.maxInputChars.value, defaults.maxInputChars),
-        maxNewTokens: coercePositiveInt(elements.maxNewTokens.value, defaults.maxNewTokens),
-        requestTimeout: coercePositiveInt(elements.requestTimeout.value, defaults.requestTimeout),
-        temperature: coerceFloat(elements.temperature.value, defaults.temperature),
-        topP: coerceFloat(elements.topP.value, defaults.topP),
-        wattsIdle: coerceFloat(elements.wattsIdle.value, defaults.wattsIdle),
-        wattsActive: coerceFloat(elements.wattsActive.value, defaults.wattsActive),
-        gco2PerWh: coerceFloat(elements.gco2PerWh.value, defaults.gco2PerWh),
-        costPerHr: coerceFloat(elements.costPerHr.value, defaults.costPerHr),
-      };
-    }
+	        // Migration: old settings stored no power profile. Default to current profile defaults.
+	        if (!parsed || typeof parsed.powerProfile !== "string") {
+	          const profile = POWER_PROFILES[merged.powerProfile];
+	          const profileDefaults = profile && profile.defaults ? profile.defaults : null;
+	          if (profileDefaults) {
+	            if (profileDefaults.wattsIdle !== undefined) merged.wattsIdle = profileDefaults.wattsIdle;
+	            if (profileDefaults.wattsActive !== undefined) merged.wattsActive = profileDefaults.wattsActive;
+	            if (profileDefaults.gco2PerWh !== undefined) merged.gco2PerWh = profileDefaults.gco2PerWh;
+	            if (profileDefaults.costPerHr !== undefined) merged.costPerHr = profileDefaults.costPerHr;
+	            if (profileDefaults.costPerKwh !== undefined) merged.costPerKwh = profileDefaults.costPerKwh;
+	            needsSave = true;
+	          }
+	        }
+
+	        if (needsSave) {
+	          try {
+	            localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
+	          } catch (_err) {}
+	        }
+
+	        return merged;
+	      } catch (_err) {
+	        return { ...defaults };
+	      }
+	    }
+
+	    function saveSettings() {
+	      const settings = getSettings();
+	      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+	    }
+
+	    function getSettings() {
+	      return {
+	        baseUrl: elements.baseUrl.value.trim().replace(/\/+$/, ""),
+	        modelName: elements.modelName.value.trim(),
+	        apiKey: elements.apiKey.value.trim(),
+	        systemPrompt: elements.systemPrompt.value,
+	        maxInputChars: coercePositiveInt(elements.maxInputChars.value, defaults.maxInputChars),
+	        maxNewTokens: coercePositiveInt(elements.maxNewTokens.value, defaults.maxNewTokens),
+	        requestTimeout: coercePositiveInt(elements.requestTimeout.value, defaults.requestTimeout),
+	        temperature: coerceFloat(elements.temperature.value, defaults.temperature),
+	        topP: coerceFloat(elements.topP.value, defaults.topP),
+	        powerProfile: elements.powerProfile.value,
+	        wattsIdle: coerceFloat(elements.wattsIdle.value, defaults.wattsIdle),
+	        wattsActive: coerceFloat(elements.wattsActive.value, defaults.wattsActive),
+	        gco2PerWh: coerceFloat(elements.gco2PerWh.value, defaults.gco2PerWh),
+	        costPerHr: coerceFloat(elements.costPerHr.value, defaults.costPerHr),
+	        costPerKwh: coerceFloat(elements.costPerKwh.value, defaults.costPerKwh),
+	      };
+	    }
 
     function getEffectiveBaseUrl(baseUrl) {
       const candidate = String(baseUrl || "").trim().replace(/\/+$/, "");
@@ -1549,47 +1836,124 @@
       }
     }
 
-    function applySettings(settings) {
-      const visibleBaseUrl = String(settings.baseUrl || "").trim();
-      elements.baseUrl.value = visibleBaseUrl === DEFAULT_BASE_URL ? "" : visibleBaseUrl;
-      elements.modelName.value = settings.modelName;
-      elements.apiKey.value = settings.apiKey;
-      elements.systemPrompt.value = settings.systemPrompt;
-      elements.maxInputChars.value = settings.maxInputChars;
-      elements.maxNewTokens.value = settings.maxNewTokens;
-      elements.requestTimeout.value = settings.requestTimeout;
-      elements.temperature.value = settings.temperature;
-      elements.topP.value = settings.topP;
-      elements.wattsIdle.value = settings.wattsIdle;
-      elements.wattsActive.value = settings.wattsActive;
-      elements.gco2PerWh.value = settings.gco2PerWh;
-      elements.costPerHr.value = settings.costPerHr;
-      updateInputCount();
-      updatePowerDisplay(false);
-    }
+	    function applySettings(settings) {
+	      const visibleBaseUrl = String(settings.baseUrl || "").trim();
+	      elements.baseUrl.value = visibleBaseUrl === DEFAULT_BASE_URL ? "" : visibleBaseUrl;
+	      elements.modelName.value = settings.modelName;
+	      elements.apiKey.value = settings.apiKey;
+	      elements.systemPrompt.value = settings.systemPrompt;
+	      elements.maxInputChars.value = settings.maxInputChars;
+	      elements.maxNewTokens.value = settings.maxNewTokens;
+	      elements.requestTimeout.value = settings.requestTimeout;
+	      elements.temperature.value = settings.temperature;
+	      elements.topP.value = settings.topP;
+	      elements.powerProfile.value = settings.powerProfile;
+	      elements.wattsIdle.value = settings.wattsIdle;
+	      elements.wattsActive.value = settings.wattsActive;
+	      elements.gco2PerWh.value = settings.gco2PerWh;
+	      elements.costPerHr.value = settings.costPerHr;
+	      elements.costPerKwh.value = settings.costPerKwh;
+	      syncPowerProfileUi();
+	      updateInputCount();
+	      updatePowerDisplay(false);
+	    }
 
     function coercePositiveInt(value, fallback) {
       const parsed = Number.parseInt(String(value), 10);
       return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
     }
 
-    function coerceFloat(value, fallback) {
-      const parsed = Number.parseFloat(String(value));
-      return Number.isFinite(parsed) ? parsed : fallback;
-    }
+	    function coerceFloat(value, fallback) {
+	      const parsed = Number.parseFloat(String(value));
+	      return Number.isFinite(parsed) ? parsed : fallback;
+	    }
 
-    function renderFallbackPowerDisplay(active) {
-      const settings = getSettings();
-      const watts = active ? settings.wattsActive : settings.wattsIdle;
-      const co2PerHr = watts * settings.gco2PerWh;
-      elements.powerWatts.textContent = `${Math.round(watts)} Watts`;
-      elements.powerCo2.textContent = `${co2PerHr.toFixed(1)} gCO₂/hr`;
-      elements.powerCost.textContent = `$${settings.costPerHr.toFixed(2)}/hr`;
-      const fallbackCountText = active ? "generating 1 replies" : "generating 0 replies";
-      elements.powerActiveCount.textContent = fallbackCountText;
-      elements.activeCountHeader.textContent = fallbackCountText;
-      elements.powerDisplay.classList.toggle("is-active", !!active);
-    }
+	    function getPowerProfileId(settings) {
+	      const candidate = String(settings.powerProfile || "").trim();
+	      if (candidate && POWER_PROFILES[candidate]) return candidate;
+	      return defaults.powerProfile;
+	    }
+
+	    function getPowerProfile(settings) {
+	      const profileId = getPowerProfileId(settings);
+	      return POWER_PROFILES[profileId] || POWER_PROFILES[defaults.powerProfile];
+	    }
+
+	    function syncPowerProfileUi() {
+	      const settings = getSettings();
+	      const profileId = getPowerProfileId(settings);
+	      const profile = POWER_PROFILES[profileId];
+	      if (!profile) return;
+
+	      if (elements.powerProfile.value !== profileId) {
+	        elements.powerProfile.value = profileId;
+	      }
+
+	      const usePerKwh = profile.costMode === "per-kwh";
+	      elements.costPerHrField.hidden = usePerKwh;
+	      elements.costPerKwhField.hidden = !usePerKwh;
+
+	      elements.powerModalBody.innerHTML = profile.modalHtml || "";
+	    }
+
+	    function applyPowerProfileDefaults(profileId) {
+	      const profile = POWER_PROFILES[profileId];
+	      if (!profile) return;
+	      const profileDefaults = profile.defaults || {};
+
+	      if (Number.isFinite(profileDefaults.wattsIdle)) {
+	        elements.wattsIdle.value = String(profileDefaults.wattsIdle);
+	      }
+	      if (Number.isFinite(profileDefaults.wattsActive)) {
+	        elements.wattsActive.value = String(profileDefaults.wattsActive);
+	      }
+	      if (Number.isFinite(profileDefaults.gco2PerWh)) {
+	        elements.gco2PerWh.value = String(profileDefaults.gco2PerWh);
+	      }
+	      if (Number.isFinite(profileDefaults.costPerHr)) {
+	        elements.costPerHr.value = String(profileDefaults.costPerHr);
+	      }
+	      if (Number.isFinite(profileDefaults.costPerKwh)) {
+	        elements.costPerKwh.value = String(profileDefaults.costPerKwh);
+	      }
+
+	      syncPowerProfileUi();
+	      saveSettings();
+	      updatePowerDisplay(state.busy);
+	    }
+
+	    function pluralize(count, singular, plural) {
+	      return count === 1 ? singular : plural;
+	    }
+
+	    function formatActiveCountText(activeCount) {
+	      return `generating ${activeCount} ${pluralize(activeCount, "reply", "replies")}`;
+	    }
+
+	    function computeCostPerHr(watts, settings, profile) {
+	      if (profile.costMode === "per-kwh") {
+	        return Number.isFinite(watts) && Number.isFinite(settings.costPerKwh)
+	          ? (watts / 1000) * settings.costPerKwh
+	          : NaN;
+	      }
+	      return settings.costPerHr;
+	    }
+
+	    function renderFallbackPowerDisplay(active) {
+	      const settings = getSettings();
+	      const profile = getPowerProfile(settings);
+	      const watts = active ? settings.wattsActive : settings.wattsIdle;
+	      const co2PerHr = watts * settings.gco2PerWh;
+	      const displayCost = computeCostPerHr(watts, settings, profile);
+	      elements.powerWatts.textContent = `${Math.round(watts)} Watts`;
+	      elements.powerCo2.textContent = `${co2PerHr.toFixed(1)} gCO₂/hr`;
+	      elements.powerCost.textContent = Number.isFinite(displayCost) ? `$${displayCost.toFixed(2)}/hr` : "—/hr";
+	      const activeCount = active ? 1 : 0;
+	      const fallbackCountText = formatActiveCountText(activeCount);
+	      elements.powerActiveCount.textContent = fallbackCountText;
+	      elements.activeCountHeader.textContent = fallbackCountText;
+	      elements.powerDisplay.classList.toggle("is-active", !!active);
+	    }
 
     function setPowerTelemetryMode(mode, detail, payload) {
       if (state.powerTelemetryMode === mode) return;
@@ -1599,53 +1963,74 @@
       }
     }
 
-    function renderTelemetryPowerDisplay(payload) {
-      const settings = getSettings();
-      const watts = Number.parseFloat(String(payload.estimated_total_watts));
-      const running = Number.parseFloat(String(payload.requests_running));
-      const share = Number.parseFloat(String(payload.cost_share_fraction));
-      const baseSystemWatts = Number.parseFloat(String(payload.base_system_watts));
-      const attributedGpuWatts = Number.parseFloat(String(payload.attributed_gpu_watts));
-      const measuredGpuWatts = Number.parseFloat(String(payload.measured_gpu_watts));
-      const serverTotalWatts = Number.parseFloat(String(payload.estimated_total_server_watts));
-      const activeCount = Number.isFinite(running) ? Math.max(0, Math.round(running)) : 0;
-      const derivedBaseSystemWatts = Number.isFinite(baseSystemWatts) ? baseSystemWatts : 300;
-      // Legacy path: old server has no estimated_total_watts; derive using correct formula (base + measured) * PUE
-      const legacyWatts = Number.isFinite(measuredGpuWatts)
-        ? (derivedBaseSystemWatts + measuredGpuWatts) * 1.35
-        : NaN;
-      const displayWatts = Number.isFinite(watts)
-        ? watts
-        : (Number.isFinite(legacyWatts) ? legacyWatts : settings.wattsActive);
-      // cost_share_fraction from old server was per-request; override to 1.0 (show total cost)
-      const displayShare = 1.0;
-      const co2PerHr = displayWatts * settings.gco2PerWh;
-      const displayCost = settings.costPerHr * displayShare;
+	    function renderTelemetryPowerDisplay(payload) {
+	      const settings = getSettings();
+	      const profileId = getPowerProfileId(settings);
+	      const profile = getPowerProfile(settings);
+	      const telemetryTotalWatts = Number.parseFloat(String(payload.estimated_total_watts));
+	      const running = Number.parseFloat(String(payload.requests_running));
+	      const baseSystemWatts = Number.parseFloat(String(payload.base_system_watts));
+	      const measuredGpuWatts = Number.parseFloat(String(payload.measured_gpu_watts));
+	      const idleGpuWatts = Number.parseFloat(String(payload.idle_gpu_watts));
+	      const activeCount = Number.isFinite(running) ? Math.max(0, Math.round(running)) : 0;
 
-      if (Number.isFinite(watts)) {
-        setPowerTelemetryMode("native", "");
-      } else if (Number.isFinite(legacyWatts)) {
-        setPowerTelemetryMode(
-          "legacy-derived",
-          "Telemetry payload is missing estimated_total_watts; deriving display watts from older payload fields.",
-          payload
-        );
-      } else {
-        setPowerTelemetryMode(
-          "legacy-fallback",
-          "Telemetry payload is missing usable watt fields; falling back to local configured active watts.",
-          payload
-        );
-      }
+	      let displayWatts = NaN;
+	      if (profileId === "home-sd") {
+	        if (activeCount <= 0) {
+	          displayWatts = settings.wattsIdle;
+	          setPowerTelemetryMode("home-idle", "");
+	        } else if (Number.isFinite(measuredGpuWatts) && Number.isFinite(idleGpuWatts)) {
+	          const baseWatts = Math.max(0, settings.wattsIdle - idleGpuWatts);
+	          displayWatts = Math.max(
+	            settings.wattsIdle,
+	            (baseWatts + measuredGpuWatts) * (profile.overheadMultiplier || 1.0)
+	          );
+	          setPowerTelemetryMode("home-derived", "");
+	        } else {
+	          displayWatts = settings.wattsActive;
+	          setPowerTelemetryMode(
+	            "home-fallback",
+	            "Telemetry payload is missing usable GPU watt fields; falling back to local configured active watts.",
+	            payload
+	          );
+	        }
+	      } else {
+	        const derivedBaseSystemWatts = Number.isFinite(baseSystemWatts) ? baseSystemWatts : 300;
+	        const legacyWatts = Number.isFinite(measuredGpuWatts)
+	          ? (derivedBaseSystemWatts + measuredGpuWatts) * (profile.overheadMultiplier || 1.35)
+	          : NaN;
+	        displayWatts = Number.isFinite(telemetryTotalWatts)
+	          ? telemetryTotalWatts
+	          : (Number.isFinite(legacyWatts) ? legacyWatts : settings.wattsActive);
 
-      elements.powerWatts.textContent = `${Math.round(displayWatts)} Watts`;
-      elements.powerCo2.textContent = `${co2PerHr.toFixed(1)} gCO₂/hr`;
-      elements.powerCost.textContent = `$${displayCost.toFixed(2)}/hr`;
-      const activeCountText = `generating ${activeCount} replies`;
-      elements.powerActiveCount.textContent = activeCountText;
-      elements.activeCountHeader.textContent = activeCountText;
-      elements.powerDisplay.classList.toggle("is-active", activeCount > 0);
-    }
+	        if (Number.isFinite(telemetryTotalWatts)) {
+	          setPowerTelemetryMode("native", "");
+	        } else if (Number.isFinite(legacyWatts)) {
+	          setPowerTelemetryMode(
+	            "legacy-derived",
+	            "Telemetry payload is missing estimated_total_watts; deriving display watts from older payload fields.",
+	            payload
+	          );
+	        } else {
+	          setPowerTelemetryMode(
+	            "legacy-fallback",
+	            "Telemetry payload is missing usable watt fields; falling back to local configured active watts.",
+	            payload
+	          );
+	        }
+	      }
+
+	      const co2PerHr = displayWatts * settings.gco2PerWh;
+	      const displayCost = computeCostPerHr(displayWatts, settings, profile);
+
+	      elements.powerWatts.textContent = `${Math.round(displayWatts)} Watts`;
+	      elements.powerCo2.textContent = `${co2PerHr.toFixed(1)} gCO₂/hr`;
+	      elements.powerCost.textContent = Number.isFinite(displayCost) ? `$${displayCost.toFixed(2)}/hr` : "—/hr";
+	      const activeCountText = formatActiveCountText(activeCount);
+	      elements.powerActiveCount.textContent = activeCountText;
+	      elements.activeCountHeader.textContent = activeCountText;
+	      elements.powerDisplay.classList.toggle("is-active", activeCount > 0);
+	    }
 
     function updatePowerDisplay(active) {
       if (state.powerTelemetryAvailable && state.powerTelemetry) {
@@ -1826,30 +2211,240 @@
       const grid = document.createElement("div");
       grid.className = "suggestion-grid";
 
-      getStarterPrompts().forEach((starter) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "suggestion-card";
+      getStarterPrompts().forEach((starter) => grid.appendChild(makeCard(starter, false)));
 
-        const heading = document.createElement("h3");
-        heading.className = "suggestion-title";
-        heading.textContent = starter.title;
+      const toggleBar = document.createElement("div");
+      toggleBar.className = "prompt-view-toggles";
 
-        const prompt = document.createElement("p");
-        prompt.className = "suggestion-prompt";
-        prompt.textContent = starter.prompt;
+      const cardsBtn = document.createElement("button");
+      cardsBtn.type = "button";
+      cardsBtn.className = "prompt-view-toggle";
+      cardsBtn.textContent = "— all prompts —";
 
-        button.appendChild(heading);
-        button.appendChild(prompt);
-        button.addEventListener("click", () => useStarterPrompt(starter.prompt));
-        grid.appendChild(button);
-      });
+      const indexBtn = document.createElement("button");
+      indexBtn.type = "button";
+      indexBtn.className = "prompt-view-toggle";
+      indexBtn.textContent = "— index —";
+      indexBtn.style.display = "none";
+
+      cardsBtn.addEventListener("click", () => setView("cards", grid, toggleBar));
+      indexBtn.addEventListener("click", () => setView("index", grid, toggleBar));
+
+      toggleBar.appendChild(cardsBtn);
+      toggleBar.appendChild(indexBtn);
 
       shell.appendChild(title);
       shell.appendChild(subtitle);
       shell.appendChild(grid);
+      shell.appendChild(toggleBar);
       elements.messages.appendChild(shell);
     }
+
+    function makeCard(starter, expanded) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "suggestion-card";
+
+      if (expanded) {
+        const kicker = document.createElement("p");
+        kicker.className = "suggestion-kicker";
+        kicker.textContent = starter.kicker || "";
+        button.appendChild(kicker);
+      }
+
+      const heading = document.createElement("h3");
+      heading.className = "suggestion-title";
+      heading.textContent = starter.title;
+
+      const prompt = document.createElement("p");
+      prompt.className = "suggestion-prompt";
+      prompt.textContent = starter.prompt;
+
+      button.appendChild(heading);
+      button.appendChild(prompt);
+      button.addEventListener("click", () => useStarterPrompt(starter.prompt));
+      return button;
+    }
+
+    function setView(view, grid, toggleBar) {
+      const [cardsBtn, indexBtn] = toggleBar.children;
+      const allPrompts = [ETHICS_PROMPT, ...STARTER_POOL];
+
+      // Reset active states
+      cardsBtn.classList.remove("is-active");
+      indexBtn.classList.remove("is-active");
+      grid.classList.remove("is-expanded");
+      elements.messages.classList.remove("is-gallery");
+
+      // Remove any existing index panel
+      const existingIndex = grid.parentNode.querySelector(".prompt-index");
+      if (existingIndex) existingIndex.remove();
+      grid.style.display = "";
+
+      if (view === "cards") {
+        cardsBtn.classList.add("is-active");
+        grid.classList.add("is-expanded");
+        elements.messages.classList.add("is-gallery");
+        grid.innerHTML = "";
+        allPrompts.forEach(starter => grid.appendChild(makeCard(starter, true)));
+        elements.messages.scrollTop = 0;
+
+      } else if (view === "index") {
+        indexBtn.classList.add("is-active");
+        elements.messages.classList.add("is-gallery");
+        grid.style.display = "none";
+
+        const index = buildIndex(allPrompts);
+        toggleBar.parentNode.insertBefore(index, toggleBar);
+        elements.messages.scrollTop = 0;
+      }
+    }
+
+    function buildIndex(prompts) {
+      const ORDER = ["Expose","Trace","Read","Analyze","Unsettle","Educate","Fiction","Administrative","Reason"];
+      const groups = {};
+      ORDER.forEach(k => { groups[k] = []; });
+      prompts.forEach(p => {
+        if (groups[p.kicker]) groups[p.kicker].push(p);
+        else groups[p.kicker] = [p];
+      });
+
+      const index = document.createElement("div");
+      index.className = "prompt-index";
+
+      ORDER.forEach(kicker => {
+        const items = groups[kicker];
+        if (!items || !items.length) return;
+
+        const section = document.createElement("section");
+        section.className = "index-group";
+
+        const heading = document.createElement("h4");
+        heading.className = "index-kicker-heading";
+        heading.textContent = kicker;
+
+        const list = document.createElement("ul");
+        list.className = "index-list";
+
+        items.forEach(starter => {
+          const li = document.createElement("li");
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "index-item";
+
+          const titleSpan = document.createElement("span");
+          titleSpan.className = "index-item-title";
+          titleSpan.textContent = starter.title;
+
+          const sep = document.createElement("span");
+          sep.className = "index-item-sep";
+          sep.textContent = "—";
+
+          const desc = document.createElement("span");
+          desc.className = "index-item-desc";
+          desc.textContent = starter.prompt;
+
+          btn.appendChild(titleSpan);
+          btn.appendChild(sep);
+          btn.appendChild(desc);
+          btn.addEventListener("click", () => useStarterPrompt(starter.prompt));
+          li.appendChild(btn);
+          list.appendChild(li);
+        });
+
+        section.appendChild(heading);
+        section.appendChild(list);
+        index.appendChild(section);
+      });
+
+      return index;
+    }
+
+    // Card rotation on the welcome screen
+    (function initCardRotation() {
+      const FIRST_DELAY = 15000;
+      const CYCLE_DELAY = 10000;
+      const STAGGER_MS = 150;
+      const FADE_MS = 400;
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      let rotationTimer = null;
+      let hovered = false;
+
+      function scheduleRotation(delay) {
+        clearTimeout(rotationTimer);
+        rotationTimer = setTimeout(rotateCycle, delay);
+      }
+
+      function rotateCycle() {
+        const grid = document.querySelector(".suggestion-grid");
+        if (!grid || state.history.length) return;
+        if (state.idle) {
+          // Poll until user becomes active again, then give them FIRST_DELAY before cycling
+          scheduleRotation(2000);
+          return;
+        }
+        if (hovered || elements.messages.classList.contains("is-gallery")) { scheduleRotation(CYCLE_DELAY); return; }
+
+        const cards = Array.from(grid.querySelectorAll(".suggestion-card"));
+        const newPrompts = getStarterPrompts();
+
+        if (reducedMotion) {
+          // No animation — just swap content instantly
+          cards.forEach((card, i) => replaceCardContent(card, newPrompts[i]));
+          scheduleRotation(CYCLE_DELAY);
+          return;
+        }
+
+        // Randomize which card dissolves first
+        const order = cards.map((_, i) => i).sort(() => Math.random() - 0.5);
+
+        order.forEach((cardIdx, staggerIdx) => {
+          const card = cards[cardIdx];
+          const starter = newPrompts[cardIdx];
+
+          setTimeout(() => {
+            card.classList.add("dissolving");
+            setTimeout(() => {
+              replaceCardContent(card, starter);
+            }, FADE_MS);
+          }, staggerIdx * STAGGER_MS);
+        });
+
+        const totalDuration = (order.length - 1) * STAGGER_MS + FADE_MS;
+        scheduleRotation(CYCLE_DELAY + totalDuration);
+      }
+
+      function replaceCardContent(card, starter) {
+        card.querySelector(".suggestion-title").textContent = starter.title;
+        card.querySelector(".suggestion-prompt").textContent = starter.prompt;
+        // Re-bind click to new prompt
+        const newCard = card.cloneNode(true);
+        newCard.classList.remove("dissolving"); // cloneNode copies the faded-out class; remove it so new card fades in
+        newCard.addEventListener("click", () => useStarterPrompt(starter.prompt));
+        card.parentNode.replaceChild(newCard, card);
+        // Re-attach hover tracking on the new node
+        newCard.addEventListener("mouseenter", () => { hovered = true; });
+        newCard.addEventListener("mouseleave", () => { hovered = false; });
+      }
+
+      // Observe when welcome screen appears to start the timer
+      const observer = new MutationObserver(() => {
+        const grid = document.querySelector(".suggestion-grid");
+        if (grid && !grid._rotationBound) {
+          grid._rotationBound = true;
+          grid.addEventListener("mouseenter", () => { hovered = true; });
+          grid.addEventListener("mouseleave", () => { hovered = false; });
+          scheduleRotation(FIRST_DELAY);
+        }
+        if (!grid) {
+          clearTimeout(rotationTimer);
+          hovered = false;
+        }
+      });
+
+      observer.observe(document.getElementById("messages"), { childList: true, subtree: false });
+    })();
 
     function clearChat() {
       if (state.busy) return;
@@ -2172,33 +2767,38 @@
     elements.advancedPanel.addEventListener("toggle", updateMobileHallucination);
     elements.connectionToggle.addEventListener("click", toggleConnectionSettings);
 
-    [
-      elements.baseUrl,
-      elements.modelName,
-      elements.apiKey,
-      elements.systemPrompt,
-      elements.maxInputChars,
-      elements.maxNewTokens,
-      elements.requestTimeout,
-      elements.temperature,
-      elements.topP,
-      elements.wattsIdle,
-      elements.wattsActive,
-      elements.gco2PerWh,
-      elements.costPerHr,
-    ].forEach((element) => {
-      element.addEventListener("change", saveSettings);
-      element.addEventListener("blur", saveSettings);
-    });
+	    [
+	      elements.baseUrl,
+	      elements.modelName,
+	      elements.apiKey,
+	      elements.systemPrompt,
+	      elements.maxInputChars,
+	      elements.maxNewTokens,
+	      elements.requestTimeout,
+	      elements.temperature,
+	      elements.topP,
+	      elements.wattsIdle,
+	      elements.wattsActive,
+	      elements.gco2PerWh,
+	      elements.costPerHr,
+	      elements.costPerKwh,
+	    ].forEach((element) => {
+	      element.addEventListener("change", saveSettings);
+	      element.addEventListener("blur", saveSettings);
+	    });
 
-    [elements.baseUrl, elements.apiKey].forEach((el) => {
-      el.addEventListener("change", refreshPowerTelemetry);
-      el.addEventListener("blur", refreshPowerTelemetry);
-    });
+	    elements.powerProfile.addEventListener("change", () => {
+	      applyPowerProfileDefaults(elements.powerProfile.value);
+	    });
 
-    [elements.wattsIdle, elements.wattsActive, elements.gco2PerWh, elements.costPerHr].forEach((el) => {
-      el.addEventListener("input", () => updatePowerDisplay(state.busy));
-    });
+	    [elements.baseUrl, elements.apiKey].forEach((el) => {
+	      el.addEventListener("change", refreshPowerTelemetry);
+	      el.addEventListener("blur", refreshPowerTelemetry);
+	    });
+
+	    [elements.wattsIdle, elements.wattsActive, elements.gco2PerWh, elements.costPerHr, elements.costPerKwh].forEach((el) => {
+	      el.addEventListener("input", () => updatePowerDisplay(state.busy));
+	    });
 
     elements.powerInfoBtn.addEventListener("click", () => {
       elements.powerModalBackdrop.classList.add("is-open");
