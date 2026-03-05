@@ -2154,9 +2154,10 @@
         return;
       }
 
-      // iOS can report a non-zero offsetTop while keyboard is open.
-      // Including it prevents a persistent blank strip above the keyboard.
-      const viewportHeight = Math.round(vv.height + vv.offsetTop);
+      // iOS can report a transient/negative offsetTop. Clamp it to avoid
+      // undersizing the app shell and leaving a phantom gap.
+      const safeOffsetTop = Math.max(0, vv.offsetTop);
+      const viewportHeight = Math.round(vv.height + safeOffsetTop);
       document.documentElement.style.setProperty("--app-height", `${viewportHeight}px`);
 
       const keyboardOffset = Math.max(
@@ -2846,6 +2847,22 @@
         handleSend();
       }
     });
+    elements.input.addEventListener("touchend", () => {
+      // iOS sometimes leaves the textarea focused while the keyboard is hidden.
+      // If that happens, re-focus on touch so the keyboard reliably reopens.
+      if (
+        document.activeElement === elements.input &&
+        !document.body.classList.contains("keyboard-open")
+      ) {
+        elements.input.blur();
+        window.setTimeout(() => {
+          elements.input.focus();
+          scheduleViewportMetricsUpdate();
+        }, 0);
+      } else {
+        scheduleViewportMetricsUpdate();
+      }
+    });
 
     elements.sendButton.addEventListener("click", handleSend);
     elements.resetChatButton.addEventListener("click", clearChat);
@@ -2856,7 +2873,6 @@
     window.addEventListener("orientationchange", scheduleViewportMetricsUpdate);
     if (window.visualViewport) {
       window.visualViewport.addEventListener("resize", scheduleViewportMetricsUpdate);
-      window.visualViewport.addEventListener("scroll", scheduleViewportMetricsUpdate);
     }
 
 	    [
