@@ -1073,7 +1073,7 @@
         display: block;
         position: fixed;
         right: 8px;
-        bottom: calc(2px + env(safe-area-inset-bottom, 0px) + var(--keyboard-offset));
+        bottom: calc(2px + env(safe-area-inset-bottom, 0px));
         z-index: 6;
         margin: 0;
         font-family: "EB Garamond", Georgia, serif;
@@ -2154,13 +2154,24 @@
         return;
       }
 
-      document.documentElement.style.setProperty("--app-height", `${Math.round(vv.height)}px`);
+      // iOS can report a non-zero offsetTop while keyboard is open.
+      // Including it prevents a persistent blank strip above the keyboard.
+      const viewportHeight = Math.round(vv.height + vv.offsetTop);
+      document.documentElement.style.setProperty("--app-height", `${viewportHeight}px`);
 
       const keyboardOffset = Math.max(
         0,
-        Math.round(window.innerHeight - vv.height - vv.offsetTop)
+        Math.round(window.innerHeight - vv.height)
       );
-      const keyboardOpen = keyboardOffset > 80;
+      const active = document.activeElement;
+      const isTextFocused = !!(
+        active &&
+        (
+          active.matches("textarea, input[type='text'], input[type='search'], input[type='email'], input[type='url'], input[type='tel'], input[type='number'], input[type='password']") ||
+          active.isContentEditable
+        )
+      );
+      const keyboardOpen = keyboardOffset > 120 || (isTextFocused && keyboardOffset > 24);
       document.documentElement.style.setProperty("--keyboard-offset", keyboardOpen ? `${keyboardOffset}px` : "0px");
       document.body.classList.toggle("keyboard-open", keyboardOpen);
       updateMobileHallucination();
@@ -2223,6 +2234,7 @@
       elements.input.focus();
       elements.input.setSelectionRange(cursorPos, cursorPos);
       elements.inputHint.textContent = "";
+      scheduleViewportMetricsUpdate();
     }
 
     function clearWelcome() {
