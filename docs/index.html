@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>BartlebyGPT</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,700;1,400;1,500;1,700&display=swap');
@@ -22,6 +22,8 @@
       --shadow: 0 6px 22px rgba(10, 10, 8, 0.09);
       --radius: 2px;
       --rule: rgba(30, 30, 28, 0.09);
+      --app-height: 100dvh;
+      --keyboard-offset: 0px;
     }
 
     * {
@@ -52,8 +54,8 @@
     .app-shell {
       --shell-gap: 12px;
       width: 100%;
-      height: 100dvh;
-      max-height: 100dvh;
+      height: var(--app-height);
+      max-height: var(--app-height);
       overflow: hidden;
       padding: 16px 16px 0;
       display: grid;
@@ -1071,7 +1073,7 @@
         display: block;
         position: fixed;
         right: 8px;
-        bottom: 2px;
+        bottom: calc(2px + env(safe-area-inset-bottom, 0px) + var(--keyboard-offset));
         z-index: 6;
         margin: 0;
         font-family: "EB Garamond", Georgia, serif;
@@ -1083,7 +1085,6 @@
         padding: 1px 4px;
         border: none;
         border-radius: var(--radius);
-        bottom: 2px;
         transition: opacity 120ms ease, visibility 120ms ease;
       }
 
@@ -2136,8 +2137,41 @@
       idleTimeout = setTimeout(() => { state.idle = true; }, IDLE_MS);
     })();
 
+    let viewportMetricsRaf = 0;
+
     function updateMobileHallucination() {
-      elements.mobileHallucination.classList.toggle("is-hidden", elements.advancedPanel.open);
+      const keyboardOpen = document.body.classList.contains("keyboard-open");
+      elements.mobileHallucination.classList.toggle("is-hidden", elements.advancedPanel.open || keyboardOpen);
+    }
+
+    function updateViewportMetrics() {
+      const vv = window.visualViewport;
+      if (!vv) {
+        document.documentElement.style.setProperty("--app-height", "100dvh");
+        document.documentElement.style.setProperty("--keyboard-offset", "0px");
+        document.body.classList.remove("keyboard-open");
+        updateMobileHallucination();
+        return;
+      }
+
+      document.documentElement.style.setProperty("--app-height", `${Math.round(vv.height)}px`);
+
+      const keyboardOffset = Math.max(
+        0,
+        Math.round(window.innerHeight - vv.height - vv.offsetTop)
+      );
+      const keyboardOpen = keyboardOffset > 80;
+      document.documentElement.style.setProperty("--keyboard-offset", keyboardOpen ? `${keyboardOffset}px` : "0px");
+      document.body.classList.toggle("keyboard-open", keyboardOpen);
+      updateMobileHallucination();
+    }
+
+    function scheduleViewportMetricsUpdate() {
+      if (viewportMetricsRaf) return;
+      viewportMetricsRaf = window.requestAnimationFrame(() => {
+        viewportMetricsRaf = 0;
+        updateViewportMetrics();
+      });
     }
 
     function toggleConnectionSettings(event) {
@@ -2477,6 +2511,7 @@
 
     window.addEventListener("resize", () => {
       requestAnimationFrame(updateWelcomeCardFit);
+      scheduleViewportMetricsUpdate();
     });
 
     function clearChat() {
@@ -2804,6 +2839,13 @@
     elements.resetChatButton.addEventListener("click", clearChat);
     elements.advancedPanel.addEventListener("toggle", updateMobileHallucination);
     elements.connectionToggle.addEventListener("click", toggleConnectionSettings);
+    document.addEventListener("focusin", scheduleViewportMetricsUpdate);
+    document.addEventListener("focusout", () => window.setTimeout(scheduleViewportMetricsUpdate, 120));
+    window.addEventListener("orientationchange", scheduleViewportMetricsUpdate);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", scheduleViewportMetricsUpdate);
+      window.visualViewport.addEventListener("scroll", scheduleViewportMetricsUpdate);
+    }
 
 	    [
 	      elements.baseUrl,
@@ -2860,6 +2902,7 @@
 
     state.turnCount = loadTurnCount();
     applySettings(loadSettings());
+    scheduleViewportMetricsUpdate();
     updateMobileHallucination();
     startPowerTelemetryPolling();
     goatStart();
