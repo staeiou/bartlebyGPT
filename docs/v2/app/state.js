@@ -2,6 +2,7 @@ export function createState() {
   return {
     busy: false,
     history: [],
+    messages: [],
     modelCache: {},
     turnCount: 0,
     goatStartSent: false,

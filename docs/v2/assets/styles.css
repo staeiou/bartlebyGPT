@@ -1214,4 +1214,145 @@ details.connection-settings > summary {
     padding: 12px 6px;
   }
 }
-  
+
+/* ── Message action buttons (refresh / edit) ─────────────────────────── */
+
+.message-row {
+  align-items: flex-end;
+}
+
+.message-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding-bottom: 2px;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  flex-shrink: 0;
+}
+
+.message-row:hover .message-actions,
+.message-row.is-last-assistant .message-actions,
+.message-row.is-last-user .message-actions {
+  opacity: 1;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(30, 30, 28, 0.18);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  line-height: 1;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.message-row.assistant .action-btn {
+  margin-left: 6px;
+}
+
+.message-row.user .action-btn {
+  margin-right: 6px;
+}
+
+.action-btn:hover {
+  background: var(--accent);
+  color: #ccccc8;
+  border-color: var(--accent);
+}
+
+.action-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ── Edit mode ───────────────────────────────────────────────────────── */
+
+.message-row.is-editing {
+  flex-direction: column;
+  align-items: flex-end;
+  max-width: min(78ch, 82%);
+  margin-left: auto;
+}
+
+.message-row.is-editing .message-actions {
+  display: none;
+}
+
+.message-row.is-editing .bubble {
+  max-width: 100%;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.edit-textarea {
+  width: 100%;
+  min-height: 80px;
+  resize: vertical;
+  border: 1px solid rgba(30, 30, 28, 0.22);
+  border-radius: var(--radius);
+  background: rgba(220, 220, 216, 0.70);
+  color: var(--text);
+  padding: 10px 13px;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1.6;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.edit-textarea:focus {
+  outline: none;
+  border-color: rgba(30, 30, 28, 0.45);
+  box-shadow: 0 0 0 2px rgba(30, 30, 28, 0.07);
+}
+
+.edit-controls {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.edit-save-btn,
+.edit-cancel-btn {
+  border-radius: var(--radius);
+  font-family: "EB Garamond", Georgia, serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 4px 14px;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.edit-save-btn {
+  background: var(--accent);
+  color: #ccccc8;
+  border: 1px solid rgba(30, 30, 28, 0.30);
+}
+
+.edit-save-btn:hover {
+  background: var(--accent-dim);
+  color: #e0e0dc;
+}
+
+.edit-cancel-btn {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid rgba(30, 30, 28, 0.18);
+}
+
+.edit-cancel-btn:hover {
+  color: var(--text);
+  border-color: rgba(30, 30, 28, 0.30);
+}
