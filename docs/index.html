@@ -469,6 +469,66 @@
       user-select: none;
     }
 
+    .prompt-gallery-controls {
+      width: 100%;
+      margin: 2px 0 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px 12px;
+    }
+
+    .prompt-gallery-controls[hidden] {
+      display: none;
+    }
+
+    .prompt-search-input {
+      border-radius: 999px;
+      background: rgba(249, 247, 240, 0.95);
+      font-family: "EB Garamond", Georgia, serif;
+      font-size: 19px;
+      line-height: 1.2;
+      padding: 8px 14px;
+    }
+
+    .prompt-search-input::placeholder {
+      color: rgba(58, 54, 42, 0.62);
+    }
+
+    .prompt-search-meta {
+      margin: 0;
+      font-family: "EB Garamond", Georgia, serif;
+      font-size: 16px;
+      color: rgba(48, 42, 32, 0.72);
+      white-space: nowrap;
+      text-align: right;
+    }
+
+    .prompt-search-empty {
+      grid-column: 1 / -1;
+      border: 1px solid rgba(30, 30, 28, 0.12);
+      border-radius: 12px;
+      background: rgba(244, 239, 229, 0.72);
+      padding: 18px 20px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .prompt-search-empty-title {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      font-size: 22px;
+      font-weight: 600;
+      color: rgba(28, 26, 20, 0.92);
+    }
+
+    .prompt-search-empty-body {
+      margin: 0;
+      font-family: "EB Garamond", Georgia, serif;
+      font-size: 18px;
+      color: rgba(28, 26, 20, 0.82);
+    }
+
     .messages.is-gallery {
       justify-content: flex-start;
     }
@@ -985,6 +1045,34 @@
       .suggestion-grid.is-expanded {
         grid-template-columns: 1fr;
         gap: 10px;
+      }
+
+      .prompt-gallery-controls {
+        grid-template-columns: 1fr;
+        gap: 6px;
+        margin-top: 4px;
+      }
+
+      .prompt-search-input {
+        font-size: 17px;
+        padding: 7px 12px;
+      }
+
+      .prompt-search-meta {
+        text-align: left;
+        font-size: 15px;
+      }
+
+      .prompt-search-empty {
+        padding: 14px 15px;
+      }
+
+      .prompt-search-empty-title {
+        font-size: 20px;
+      }
+
+      .prompt-search-empty-body {
+        font-size: 16px;
       }
 
       .suggestion-grid.is-compact-mobile:not(.is-expanded) .suggestion-card:nth-child(n + 3) {
@@ -2287,6 +2375,36 @@
 
       getStarterPrompts().forEach((starter) => grid.appendChild(makeCard(starter, false)));
 
+      const searchControls = document.createElement("div");
+      searchControls.className = "prompt-gallery-controls";
+      searchControls.hidden = true;
+      searchControls._allPrompts = [];
+
+      const searchInput = document.createElement("input");
+      searchInput.type = "search";
+      searchInput.className = "prompt-search-input";
+      searchInput.placeholder = "Search prompts by title, category, or text";
+      searchInput.setAttribute("aria-label", "Search prompts");
+      searchInput.autocomplete = "off";
+      searchInput.spellcheck = false;
+
+      const searchMeta = document.createElement("p");
+      searchMeta.className = "prompt-search-meta";
+
+      searchInput.addEventListener("input", () => {
+        renderExpandedCards(grid, searchControls._allPrompts || [], searchInput.value, searchMeta);
+      });
+
+      searchInput.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && searchInput.value) {
+          searchInput.value = "";
+          renderExpandedCards(grid, searchControls._allPrompts || [], "", searchMeta);
+        }
+      });
+
+      searchControls.appendChild(searchInput);
+      searchControls.appendChild(searchMeta);
+
       const toggleBar = document.createElement("div");
       toggleBar.className = "prompt-view-toggles";
 
@@ -2301,14 +2419,15 @@
       indexBtn.textContent = "— index —";
       indexBtn.style.display = "none";
 
-      cardsBtn.addEventListener("click", () => setView("cards", grid, toggleBar));
-      indexBtn.addEventListener("click", () => setView("index", grid, toggleBar));
+      cardsBtn.addEventListener("click", () => setView("cards", grid, toggleBar, searchControls));
+      indexBtn.addEventListener("click", () => setView("index", grid, toggleBar, searchControls));
 
       toggleBar.appendChild(cardsBtn);
       toggleBar.appendChild(indexBtn);
 
       shell.appendChild(title);
       shell.appendChild(subtitle);
+      shell.appendChild(searchControls);
       shell.appendChild(grid);
       shell.appendChild(toggleBar);
       elements.messages.appendChild(shell);
@@ -2341,15 +2460,63 @@
       return button;
     }
 
-    function setView(view, grid, toggleBar) {
+    function matchesPromptQuery(starter, normalizedQuery) {
+      if (!normalizedQuery) return true;
+      const haystack = `${starter.kicker || ""} ${starter.title || ""} ${starter.prompt || ""}`.toLowerCase();
+      return haystack.includes(normalizedQuery);
+    }
+
+    function renderExpandedCards(grid, prompts, query, metaEl) {
+      const normalizedQuery = query.trim().toLowerCase();
+      const visiblePrompts = normalizedQuery
+        ? prompts.filter((starter) => matchesPromptQuery(starter, normalizedQuery))
+        : prompts;
+
+      grid.innerHTML = "";
+
+      if (!visiblePrompts.length) {
+        const empty = document.createElement("div");
+        empty.className = "prompt-search-empty";
+
+        const title = document.createElement("p");
+        title.className = "prompt-search-empty-title";
+        title.textContent = "No prompts matched your search.";
+
+        const body = document.createElement("p");
+        body.className = "prompt-search-empty-body";
+        body.textContent = `Try a different keyword or clear "${query.trim()}".`;
+
+        empty.appendChild(title);
+        empty.appendChild(body);
+        grid.appendChild(empty);
+      } else {
+        visiblePrompts.forEach((starter) => grid.appendChild(makeCard(starter, true)));
+      }
+
+      if (metaEl) {
+        const total = prompts.length;
+        const visible = visiblePrompts.length;
+        metaEl.textContent = normalizedQuery
+          ? `${visible} of ${total} prompts`
+          : `${total} prompts`;
+      }
+    }
+
+    function setView(view, grid, toggleBar, searchControls) {
       const [cardsBtn, indexBtn] = toggleBar.children;
       const allPrompts = [ETHICS_PROMPT, ...STARTER_POOL];
+      const searchInput = searchControls.querySelector(".prompt-search-input");
+      const searchMeta = searchControls.querySelector(".prompt-search-meta");
 
       // Reset active states
       cardsBtn.classList.remove("is-active");
       indexBtn.classList.remove("is-active");
       grid.classList.remove("is-expanded");
       elements.messages.classList.remove("is-gallery");
+      searchControls.hidden = true;
+      searchControls._allPrompts = [];
+      if (searchInput) searchInput.value = "";
+      if (searchMeta) searchMeta.textContent = "";
 
       // Remove any existing index panel
       const existingIndex = grid.parentNode.querySelector(".prompt-index");
@@ -2361,8 +2528,10 @@
         grid.classList.add("is-expanded");
         grid.classList.remove("is-compact-mobile");
         elements.messages.classList.add("is-gallery");
-        grid.innerHTML = "";
-        [...allPrompts].sort(() => Math.random() - 0.5).forEach(starter => grid.appendChild(makeCard(starter, true)));
+        const orderedPrompts = [...allPrompts].sort(() => Math.random() - 0.5);
+        searchControls.hidden = false;
+        searchControls._allPrompts = orderedPrompts;
+        renderExpandedCards(grid, orderedPrompts, "", searchMeta);
         elements.messages.scrollTop = 0;
 
       } else if (view === "index") {
