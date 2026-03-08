@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>BartlebyGPT</title>
+  <link rel="stylesheet" href="./assets/styles.css">
+  <script>
+    window.goatcounter = window.goatcounter || {};
+    Object.assign(window.goatcounter, {
+      no_onload: true,
+      no_events: true,
+      allow_local: true,
+    });
+  </script>
+  <script
+    data-goatcounter="https://bartleby-vast.goatcounter.com/count"
+    async
+    src="https://gc.zgo.at/count.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <button id="reset-chat-button" class="brand-copy" type="button" aria-label="Start a new chat">
+          <h1>&nbsp; BartlebyGPT</h1>
+        </button>
+        <div id="status-pill" class="status-pill">Idle</div>
+      </div>
+      <span id="active-count-header" class="active-count-header"></span>
+      <div id="power-display" class="power-display">
+        <span class="power-label">&nbsp; is<span class="power-currently"> currently</span> costing ~</span>
+        <span class="power-val" id="power-watts">&#8212; Watts</span>
+        <span class="power-sep">&middot;</span>
+        <span class="power-val" id="power-co2">&#8212; gCO&#8322;/hr</span>
+        <span class="power-sep">&middot;</span>
+        <span class="power-val" id="power-cost">&#8212;/hr</span>
+        <span class="power-sep">&middot;</span>
+        <span class="power-val" id="power-active-count">&#8212; active</span>
+        <button class="power-info-btn" id="power-info-btn" aria-label="Explain these figures">?</button>
+      </div>
+      <p class="topbar-note">A <a href="https://stuartgeiger.com" target="_blank" rel="noreferrer">Stuart Geiger</a> Hallucination</p>
+    </header>
+
+    <main class="chat-panel">
+      <div id="messages" class="messages"></div>
+    </main>
+
+    <section class="composer">
+      <textarea id="message-input" placeholder="Type a message. Shift+Enter for a newline."></textarea>
+      <div class="composer-side">
+        <button id="send-button" class="send-button">Send</button>
+        <div class="input-meta">
+          <span id="input-hint"></span>
+          <span id="input-count">0 chars</span>
+        </div>
+      </div>
+    </section>
+
+    <details id="advanced-panel" class="advanced">
+      <summary>Advanced</summary>
+      <div class="advanced-content">
+        <div class="field-grid">
+          <div class="field">
+            <label>
+              TEMPERATURE
+              <input id="temperature" type="number" min="0" max="2" step="0.05">
+            </label>
+          </div>
+          <div class="field">
+            <label>
+              TOP_P
+              <input id="top-p" type="number" min="0.1" max="1" step="0.05">
+            </label>
+          </div>
+        </div>
+
+        <div class="field-grid">
+          <div class="field">
+            <label>
+              SYSTEM_PROMPT
+              <input id="system-prompt" type="text" placeholder="Optional system message">
+            </label>
+          </div>
+        </div>
+
+        <div class="field-grid three">
+          <div class="field">
+            <label>
+              MAX_INPUT_CHARS
+              <input id="max-input-chars" type="number" min="1" step="1">
+            </label>
+          </div>
+          <div class="field">
+            <label>
+              MAX_NEW_TOKENS
+              <input id="max-new-tokens" type="number" min="1" step="1">
+            </label>
+          </div>
+          <div class="field">
+            <label>
+              REQUEST_TIMEOUT (s)
+              <input id="request-timeout" type="number" min="1" step="1">
+            </label>
+          </div>
+        </div>
+
+        <div class="field-grid">
+          <div class="field">
+            <label>
+              POWER_PROFILE
+              <select id="power-profile">
+                <option value="home-sd">Home (San Diego, Quadro RTX 4000)</option>
+                <option value="spokane-dc">TierPoint (Spokane, WA data center)</option>
+              </select>
+            </label>
+          </div>
+          <div class="field">
+            <label>
+              WATTS_IDLE
+              <input id="watts-idle" type="number" min="0" step="1">
+            </label>
+          </div>
+          <div class="field">
+            <label>
+              WATTS_ACTIVE
+              <input id="watts-active" type="number" min="0" step="1">
+            </label>
+          </div>
+          <div class="field">
+            <label>
+              <span id="connection-toggle" class="connection-toggle">gCO&#8322;/Wh</span>
+              <input id="gco2-per-wh" type="number" min="0" step="0.001">
+            </label>
+          </div>
+          <div class="field" id="cost-per-hr-field">
+            <label>
+              COST_PER_HR ($)
+              <input id="cost-per-hr" type="number" min="0" step="0.01">
+            </label>
+          </div>
+          <div class="field" id="cost-per-kwh-field" hidden>
+            <label>
+              COST_PER_KWH ($)
+              <input id="cost-per-kwh" type="number" min="0" step="0.01">
+            </label>
+          </div>
+        </div>
+
+        <details id="connection-settings" class="connection-settings">
+          <summary></summary>
+          <div class="connection-settings-content">
+            <p class="warning">
+              This is a browser-only client. The remote server must allow CORS.
+              Any API key entered here is exposed to the browser and should only be used for trusted endpoints.
+            </p>
+
+            <div class="field-grid">
+              <div class="field">
+                <label>
+                  BASE_URL
+                  <input id="base-url" type="text" placeholder="Leave blank to use the hosted default">
+                </label>
+              </div>
+              <div class="field">
+                <label>
+                  MODEL
+                  <input id="model-name" type="text" placeholder="Leave blank to auto-discover">
+                </label>
+              </div>
+            </div>
+
+            <div class="field-grid">
+              <div class="field">
+                <label>
+                  API_KEY
+                  <input id="api-key" type="password" placeholder="Optional bearer token">
+                </label>
+              </div>
+            </div>
+          </div>
+        </details>
+      </div>
+    </details>
+  </div>
+
+  <p id="mobile-hallucination" class="mobile-hallucination">A <a href="https://stuartgeiger.com" target="_blank" rel="noreferrer">Stuart Geiger</a> Hallucination</p>
+
+  <div class="power-modal-backdrop" id="power-modal-backdrop">
+    <div class="power-modal" role="dialog" aria-modal="true">
+      <button class="power-modal-close" id="power-modal-close" aria-label="Close">&times;</button>
+      <h2 id="power-modal-title">About these figures</h2>
+      <div id="power-modal-body"></div>
+    </div>
+  </div>
+
+  <script type="module" src="./app/main.js"></script>
+</body>
+</html>
