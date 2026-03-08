@@ -1278,7 +1278,7 @@ details.connection-settings > summary {
 .message-row.is-editing {
   flex-direction: column;
   align-items: flex-end;
-  max-width: min(78ch, 82%);
+  width: min(78ch, 82%);
   margin-left: auto;
 }
 
@@ -1296,7 +1296,7 @@ details.connection-settings > summary {
 
 .edit-textarea {
   width: 100%;
-  min-height: 80px;
+  min-height: 2lh;
   resize: vertical;
   border: 1px solid rgba(30, 30, 28, 0.22);
   border-radius: var(--radius);

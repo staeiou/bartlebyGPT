@@ -266,10 +266,12 @@ export function createChatUi({
     lastAsst.rowEl.remove();
 
     const originalText = lastUser.bubbleEl.textContent;
+    const bubbleHeight = lastUser.bubbleEl.offsetHeight;
     lastUser.bubbleEl.textContent = "";
 
     const textarea = document.createElement("textarea");
     textarea.className = "edit-textarea";
+    textarea.style.height = bubbleHeight + "px";
     textarea.value = originalText;
     lastUser.bubbleEl.appendChild(textarea);
 
