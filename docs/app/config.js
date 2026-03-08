@@ -1,3 +1,4 @@
+export const FEEDBACK_PATH = "/v1/feedback";
 export const SETTINGS_KEY = "bartleby-remote-settings-v1";
 export const TURN_COUNT_KEY = "bartleby-remote-turn-count-v1";
 export const DEFAULT_BASE_URL = "https://api.bartlebygpt.org";

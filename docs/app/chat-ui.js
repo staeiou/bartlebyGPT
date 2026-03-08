@@ -1,5 +1,5 @@
-import { MODEL_MAX_CONTEXT_TOKENS, defaults } from "./config.js";
-import { coercePositiveInt } from "./settings.js";
+import { MODEL_MAX_CONTEXT_TOKENS, defaults, FEEDBACK_PATH } from "./config.js";
+import { coercePositiveInt, getEffectiveBaseUrl } from "./settings.js";
 
 const ELLIPSIS = "\u2026";
 
@@ -20,6 +20,19 @@ export function createChatUi({
 
   function scrollMessagesToBottom() {
     elements.messages.scrollTop = elements.messages.scrollHeight;
+  }
+
+  function sendFeedback(rating, messages) {
+    // API call disabled until server endpoint is ready.
+    // To re-enable: remove the return below and ensure FEEDBACK_PATH
+    // ("/v1/feedback") is implemented on the server.
+    return;
+    const baseUrl = getEffectiveBaseUrl(settings.getSettings().baseUrl); // eslint-disable-line no-unreachable
+    fetch(baseUrl + FEEDBACK_PATH, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rating, messages }),
+    }).catch(() => {});
   }
 
   function updateLastRowClasses() {
@@ -50,11 +63,34 @@ export function createChatUi({
     actions.className = "message-actions";
 
     if (role === "assistant") {
+      const thumbUpBtn = document.createElement("button");
+      thumbUpBtn.className = "action-btn feedback-btn";
+      thumbUpBtn.title = "Good response";
+      thumbUpBtn.textContent = "\uD83D\uDC4D";
+
+      const thumbDownBtn = document.createElement("button");
+      thumbDownBtn.className = "action-btn feedback-btn";
+      thumbDownBtn.title = "Bad response";
+      thumbDownBtn.textContent = "\uD83D\uDC4E";
+
+      [thumbUpBtn, thumbDownBtn].forEach((btn, i) => {
+        const rating = i === 0 ? "up" : "down";
+        btn.addEventListener("click", () => {
+          thumbUpBtn.disabled = true;
+          thumbDownBtn.disabled = true;
+          btn.classList.add("is-selected");
+          sendFeedback(rating, state.history.slice());
+        });
+      });
+
       const refreshBtn = document.createElement("button");
       refreshBtn.className = "action-btn refresh-btn";
       refreshBtn.title = "Regenerate response";
       refreshBtn.textContent = "\u21ba";
       refreshBtn.addEventListener("click", () => void regenerateLast());
+
+      actions.appendChild(thumbUpBtn);
+      actions.appendChild(thumbDownBtn);
       actions.appendChild(refreshBtn);
       row.appendChild(bubble);
       row.appendChild(actions);
@@ -221,6 +257,12 @@ export function createChatUi({
       bubbleEl: lastAsst.bubbleEl,
       userText,
       currentSettings,
+    });
+
+    // Reset feedback buttons on the reused assistant row
+    lastAsst.rowEl.querySelectorAll(".feedback-btn").forEach((btn) => {
+      btn.disabled = false;
+      btn.classList.remove("is-selected");
     });
 
     // Restore both entries to tracking arrays regardless of outcome

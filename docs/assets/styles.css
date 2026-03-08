@@ -1273,6 +1273,12 @@ details.connection-settings > summary {
   cursor: not-allowed;
 }
 
+.feedback-btn.is-selected {
+  opacity: 1;
+  border-color: rgba(30, 30, 28, 0.35);
+  background: rgba(30, 30, 28, 0.08);
+}
+
 /* ── Edit mode ───────────────────────────────────────────────────────── */
 
 .message-row.is-editing {
