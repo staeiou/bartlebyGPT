@@ -205,12 +205,6 @@ export const STARTER_POOL = [
     prompt: "Review this application for [position / grant / program], identifying its strongest elements, its weakest, how well it fits the stated criteria, what questions or concerns it raises, and a defensible recommendation with reasoning: [paste application materials, rubric, or evaluation criteria here]",
   },
   {
-    kicker: "Fiction",
-    title: "Draft the Chapter",
-    description: "Turn an outline, notes, or a rough draft into a chapter that moves — with scene, voice, pacing, and the pressure the reader needs to feel at this moment in the narrative.",
-    prompt: "Draft a chapter for [novel / work in progress], establishing voice, managing scene and summary, building the pressure the reader needs to feel at this moment in the narrative, and ending with the right kind of tension or release: [paste outline, notes, existing draft, or context here]",
-  },
-  {
     kicker: "Educate",
     title: "Explain the Concept",
     description: "Hand over a concept, theory, or finding and get back a clear, accurate explanation calibrated to a specific audience — with the right analogies, the right level of abstraction, and no false simplifications.",
@@ -221,12 +215,6 @@ export const STARTER_POOL = [
     title: "Design the Syllabus",
     description: "Hand over a course topic, level, and constraints and get back a structured syllabus: learning objectives, unit sequence, key readings, and an assessment structure that aligns with the stated goals.",
     prompt: "Design a syllabus for [topic / level / institution], specifying learning objectives, a weekly or unit sequence, key readings or resources, and an assessment structure that aligns with the stated goals: [paste constraints, existing materials, or institutional context here]",
-  },
-  {
-    kicker: "Educate",
-    title: "Write the Explainer",
-    description: "Turn specialist knowledge into prose a smart non-specialist can follow — without dumbing it down or losing what actually matters.",
-    prompt: "Write a clear, accurate explainer about [topic, for audience], translating specialist knowledge into prose a smart non-specialist can follow without losing what is genuinely at stake: [paste source material, technical notes, or key claims here]",
   },
 ];
 
