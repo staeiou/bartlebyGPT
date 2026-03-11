@@ -49,6 +49,47 @@ export function createChatUi({
     if (lastUser) lastUser.rowEl.classList.add("is-last-user");
   }
 
+  function setMessageContent(entry, content) {
+    entry.content = content;
+    entry.bubbleEl.textContent = content;
+  }
+
+  function appendHistoryTurn(userContent, assistantContent) {
+    state.history.push({ role: "user", content: userContent });
+    state.history.push({ role: "assistant", content: assistantContent });
+  }
+
+  function setTurnHistoryIncluded(userEntry, assistantEntry, included) {
+    userEntry.historyIncluded = included;
+    assistantEntry.historyIncluded = included;
+  }
+
+  function removeHistoryTurnIfIncluded(userEntry, assistantEntry) {
+    if (!userEntry.historyIncluded || !assistantEntry.historyIncluded) {
+      return false;
+    }
+
+    if (state.history.length >= 2) {
+      state.history.pop();
+      state.history.pop();
+    }
+
+    setTurnHistoryIncluded(userEntry, assistantEntry, false);
+    return true;
+  }
+
+  function getLastTurnEntries() {
+    if (state.messages.length < 2) return null;
+
+    const assistantEntry = state.messages[state.messages.length - 1];
+    const userEntry = state.messages[state.messages.length - 2];
+    if (assistantEntry.role !== "assistant" || userEntry.role !== "user") {
+      return null;
+    }
+
+    return { userEntry, assistantEntry };
+  }
+
   function createBubble(role, content) {
     welcome.clearWelcome();
 
@@ -107,9 +148,16 @@ export function createChatUi({
 
     elements.messages.appendChild(row);
     scrollMessagesToBottom();
-    state.messages.push({ role, rowEl: row, bubbleEl: bubble });
+    const entry = {
+      role,
+      rowEl: row,
+      bubbleEl: bubble,
+      content,
+      historyIncluded: false,
+    };
+    state.messages.push(entry);
     updateLastRowClasses();
-    return bubble;
+    return entry;
   }
 
   function clearChat() {
@@ -132,26 +180,29 @@ export function createChatUi({
     });
   }
 
-  async function runStreamWithRetry({ bubbleEl, userText, currentSettings }) {
+  async function runStreamWithRetry({ assistantEntry, userText, currentSettings }) {
     const SILENT_DELAYS = [1000, 2000, 4000];
     const MAX_RETRIES = 9;
     let attempt = 0;
     let lastErr = null;
 
     while (true) {
-      bubbleEl.textContent = "";
+      setMessageContent(assistantEntry, "");
       try {
         const result = await chatApi.streamCompletion({
           settings: currentSettings,
           userText,
           onToken(output) {
-            bubbleEl.textContent = output;
+            setMessageContent(assistantEntry, output);
             scrollMessagesToBottom();
           },
         });
         return { result };
       } catch (err) {
         lastErr = err;
+        if (err instanceof Error && err.retryable === false) {
+          break;
+        }
         attempt += 1;
         if (attempt > MAX_RETRIES) break;
 
@@ -160,7 +211,7 @@ export function createChatUi({
         } else {
           const backoffIndex = attempt - 4;
           const delay = Math.min(30000, 8000 * Math.pow(2, backoffIndex));
-          bubbleEl.textContent = `Server busy, retrying${ELLIPSIS}`;
+          setMessageContent(assistantEntry, `Server busy, retrying${ELLIPSIS}`);
           elements.inputHint.textContent = `Server busy, retrying${ELLIPSIS}`;
           await sleep(delay);
         }
@@ -201,26 +252,27 @@ export function createChatUi({
 
     analytics.gcCount("chat/send", "Chat send");
 
-    createBubble("user", userText);
-    const assistantBubble = createBubble("assistant", "");
+    const userEntry = createBubble("user", userText);
+    const assistantEntry = createBubble("assistant", "");
 
     power.setBusy(true, "Streaming");
 
     const { result, error } = await runStreamWithRetry({
-      bubbleEl: assistantBubble,
+      assistantEntry,
       userText,
       currentSettings,
     });
 
     if (error) {
       const message = error instanceof Error ? error.message : "Request failed.";
-      assistantBubble.textContent = `Error: ${message}`;
+      setMessageContent(assistantEntry, `Error: ${message}`);
       elements.inputHint.textContent = message;
       analytics.gcCount("chat/response-error", "Response error");
       power.setBusy(false, "Error");
     } else {
-      state.history.push({ role: "user", content: result.userText });
-      state.history.push({ role: "assistant", content: result.output });
+      appendHistoryTurn(result.userText, result.output);
+      setTurnHistoryIncluded(userEntry, assistantEntry, true);
+      setMessageContent(assistantEntry, result.output);
       analytics.gcCount("chat/response-complete", "Response complete");
       analytics.countCompletedTurn();
       elements.inputHint.textContent = result.wasTokenTrimmed
@@ -232,21 +284,13 @@ export function createChatUi({
 
   async function regenerateLast() {
     if (state.busy) return;
-    if (state.messages.length < 2) return;
+    const lastTurn = getLastTurnEntries();
+    if (!lastTurn) return;
 
-    const lastEntry = state.messages[state.messages.length - 1];
-    if (lastEntry.role !== "assistant") return;
+    const { userEntry: lastUser, assistantEntry: lastAsst } = lastTurn;
+    const userText = lastUser.content;
 
-    // Pop assistant from both tracking arrays
-    const lastAsst = state.messages.pop();
-    state.history.pop();
-
-    // Pop user too — buildMessages will re-append it via userText param
-    const lastUser = state.messages.pop();
-    const userHistEntry = state.history.pop();
-    const userText = userHistEntry.content;
-
-    updateLastRowClasses();
+    removeHistoryTurnIfIncluded(lastUser, lastAsst);
 
     const currentSettings = settings.getSettings();
     elements.inputHint.textContent = `Regenerating${ELLIPSIS}`;
@@ -254,7 +298,7 @@ export function createChatUi({
     analytics.gcCount("chat/regenerate", "Regenerate");
 
     const { result, error } = await runStreamWithRetry({
-      bubbleEl: lastAsst.bubbleEl,
+      assistantEntry: lastAsst,
       userText,
       currentSettings,
     });
@@ -265,24 +309,21 @@ export function createChatUi({
       btn.classList.remove("is-selected");
     });
 
-    // Restore both entries to tracking arrays regardless of outcome
-    state.messages.push(lastUser);
-    state.messages.push(lastAsst);
-
     if (error) {
       const message = error instanceof Error ? error.message : "Request failed.";
-      lastAsst.bubbleEl.textContent = `Error: ${message}`;
+      setMessageContent(lastAsst, `Error: ${message}`);
       elements.inputHint.textContent = message;
       analytics.gcCount("chat/response-error", "Response error");
       power.setBusy(false, "Error");
-      // Keep error text in history so state stays consistent
-      state.history.push({ role: "user", content: userText });
-      state.history.push({ role: "assistant", content: lastAsst.bubbleEl.textContent });
     } else {
-      state.history.push({ role: "user", content: result.userText });
-      state.history.push({ role: "assistant", content: result.output });
+      appendHistoryTurn(result.userText, result.output);
+      setTurnHistoryIncluded(lastUser, lastAsst, true);
+      setMessageContent(lastUser, result.userText);
+      setMessageContent(lastAsst, result.output);
       analytics.countCompletedTurn();
-      elements.inputHint.textContent = "Done.";
+      elements.inputHint.textContent = result.wasTokenTrimmed
+        ? `Done. Input was trimmed to fit the ${MODEL_MAX_CONTEXT_TOKENS}-token context window.`
+        : "Done.";
       power.setBusy(false, "Idle");
     }
 
@@ -291,16 +332,14 @@ export function createChatUi({
 
   function editLast() {
     if (state.busy) return;
-    if (state.messages.length < 2) return;
+    const lastTurn = getLastTurnEntries();
+    if (!lastTurn) return;
 
-    const lastEntry = state.messages[state.messages.length - 1];
-    if (lastEntry.role !== "assistant") return;
+    const { userEntry: lastUser, assistantEntry: lastAsst } = lastTurn;
+    const hadHistory = removeHistoryTurnIfIncluded(lastUser, lastAsst);
 
-    // Pop both assistant and user from tracking arrays and history
-    const lastAsst = state.messages.pop();
-    state.history.pop();
-    const lastUser = state.messages.pop();
-    state.history.pop();
+    state.messages.pop();
+    state.messages.pop();
 
     updateLastRowClasses();
 
@@ -351,11 +390,13 @@ export function createChatUi({
     });
 
     cancelBtn.addEventListener("click", () => {
-      lastUser.bubbleEl.textContent = originalText;
+      setMessageContent(lastUser, originalText);
       exitEditMode();
       elements.messages.appendChild(lastAsst.rowEl);
-      state.history.push({ role: "user", content: originalText });
-      state.history.push({ role: "assistant", content: lastAsst.bubbleEl.textContent });
+      if (hadHistory) {
+        appendHistoryTurn(originalText, lastAsst.content);
+        setTurnHistoryIncluded(lastUser, lastAsst, true);
+      }
       state.messages.push(lastUser);
       state.messages.push(lastAsst);
       updateLastRowClasses();
