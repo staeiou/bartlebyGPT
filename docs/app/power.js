@@ -105,26 +105,18 @@ export function createPowerController({ elements, state, getSettings }) {
     const running = Number.parseFloat(String(payload.requests_running));
     const baseSystemWatts = Number.parseFloat(String(payload.base_system_watts));
     const measuredGpuWatts = Number.parseFloat(String(payload.measured_gpu_watts));
-    const idleGpuWatts = Number.parseFloat(String(payload.idle_gpu_watts));
     const activeCount = Number.isFinite(running) ? Math.max(0, Math.round(running)) : 0;
 
     let displayWatts = Number.NaN;
     if (profileId === "home-sd") {
-      if (activeCount <= 0) {
-        displayWatts = settings.wattsIdle;
-        setPowerTelemetryMode("home-idle", "");
-      } else if (Number.isFinite(measuredGpuWatts) && Number.isFinite(idleGpuWatts)) {
-        const baseWatts = Math.max(0, settings.wattsIdle - idleGpuWatts);
-        displayWatts = Math.max(
-          settings.wattsIdle,
-          (baseWatts + measuredGpuWatts) * (profile.overheadMultiplier || 1.0)
-        );
+      if (Number.isFinite(measuredGpuWatts)) {
+        displayWatts = settings.wattsIdle + measuredGpuWatts;
         setPowerTelemetryMode("home-derived", "");
       } else {
         displayWatts = settings.wattsActive;
         setPowerTelemetryMode(
           "home-fallback",
-          "Telemetry payload is missing usable GPU watt fields; falling back to local configured active watts.",
+          "Telemetry payload is missing measured_gpu_watts; falling back to local configured active watts.",
           payload
         );
       }
