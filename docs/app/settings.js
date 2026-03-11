@@ -21,15 +21,17 @@ export function getEffectiveBaseUrl(baseUrl) {
     return DEFAULT_BASE_URL;
   }
 
+  let parsed;
   try {
-    const parsed = new URL(candidate);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      throw new Error("Unsupported protocol");
-    }
-    return `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, "");
+    parsed = new URL(candidate);
   } catch (_err) {
-    return DEFAULT_BASE_URL;
+    throw new Error("Invalid base URL. Use a full http:// or https:// URL.");
   }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Invalid base URL. Use an http:// or https:// URL.");
+  }
+  return `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, "");
 }
 
 export function createSettingsController(elements) {
@@ -94,7 +96,12 @@ export function createSettingsController(elements) {
 
   function saveSettings() {
     const settings = getSettings();
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      return true;
+    } catch (_err) {
+      return false;
+    }
   }
 
   function applySettings(settings) {
