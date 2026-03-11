@@ -6,6 +6,51 @@ import {
 import { getEffectiveBaseUrl } from "./settings.js";
 
 export function createChatApi({ state, gcCount }) {
+  function createRequestError(message, { status, retryable = false, cause } = {}) {
+    const error = new Error(message);
+    if (Number.isFinite(status)) {
+      error.status = status;
+    }
+    error.retryable = retryable;
+    if (cause) {
+      error.cause = cause;
+    }
+    return error;
+  }
+
+  function isRetryableStatus(status) {
+    return status === 408 || status === 429 || status >= 500;
+  }
+
+  function normalizeRequestError(error, timeoutSeconds) {
+    if (error instanceof Error && typeof error.retryable === "boolean") {
+      return error;
+    }
+
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return createRequestError(`Request timed out after ${timeoutSeconds}s.`, {
+        retryable: true,
+        cause: error,
+      });
+    }
+
+    if (error instanceof TypeError) {
+      return createRequestError("Network error while contacting the server.", {
+        retryable: true,
+        cause: error,
+      });
+    }
+
+    if (error instanceof Error) {
+      return createRequestError(error.message, {
+        retryable: false,
+        cause: error,
+      });
+    }
+
+    return createRequestError("Request failed.", { retryable: false });
+  }
+
   function authHeaders(apiKey) {
     const headers = {};
     if (apiKey) {
@@ -14,7 +59,7 @@ export function createChatApi({ state, gcCount }) {
     return headers;
   }
 
-  async function resolveModel(settings) {
+  async function resolveModel(settings, signal) {
     if (settings.modelName) return settings.modelName;
 
     const baseUrl = getEffectiveBaseUrl(settings.baseUrl);
@@ -30,16 +75,25 @@ export function createChatApi({ state, gcCount }) {
     const response = await fetch(`${baseUrl}/v1/models`, {
       method: "GET",
       headers: authHeaders(settings.apiKey),
+      signal,
     });
 
     if (!response.ok) {
-      throw new Error(`Model discovery failed: ${response.status} ${response.statusText}`);
+      throw createRequestError(
+        `Model discovery failed: ${response.status} ${response.statusText}`,
+        {
+          status: response.status,
+          retryable: isRetryableStatus(response.status),
+        }
+      );
     }
 
     const payload = await response.json();
     const data = Array.isArray(payload.data) ? payload.data : [];
     if (!data.length || !data[0].id) {
-      throw new Error("Remote server returned no models.");
+      throw createRequestError("Remote server returned no models.", {
+        retryable: false,
+      });
     }
 
     const modelId = String(data[0].id).trim();
@@ -119,11 +173,11 @@ export function createChatApi({ state, gcCount }) {
   async function streamCompletion({ settings, userText, onToken }) {
     const controller = new AbortController();
     const timeoutMs = settings.requestTimeout * 1000;
-    const timeoutId = window.setTimeout(() => controller.abort("timeout"), timeoutMs);
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const baseUrl = getEffectiveBaseUrl(settings.baseUrl);
-      const model = await resolveModel(settings);
+      const model = await resolveModel(settings, controller.signal);
       const prepared = buildMessages(settings, userText);
       const response = await fetch(`${baseUrl}/v1/chat/completions`, {
         method: "POST",
@@ -147,7 +201,13 @@ export function createChatApi({ state, gcCount }) {
         try {
           body = (await response.text()).slice(0, 600);
         } catch (_err) {}
-        throw new Error(`Remote error ${response.status}: ${body || response.statusText}`);
+        const message = response.ok
+          ? "Remote server did not provide a streaming response."
+          : `Remote error ${response.status}: ${body || response.statusText}`;
+        throw createRequestError(message, {
+          status: response.status,
+          retryable: response.ok ? false : isRetryableStatus(response.status),
+        });
       }
 
       const reader = response.body.getReader();
@@ -205,7 +265,9 @@ export function createChatApi({ state, gcCount }) {
       }
 
       if (!sawToken) {
-        throw new Error("Remote server returned no streamed content.");
+        throw createRequestError("Remote server returned no streamed content.", {
+          retryable: false,
+        });
       }
 
       return {
@@ -213,6 +275,8 @@ export function createChatApi({ state, gcCount }) {
         userText: prepared.userText,
         wasTokenTrimmed: prepared.wasTokenTrimmed,
       };
+    } catch (error) {
+      throw normalizeRequestError(error, settings.requestTimeout);
     } finally {
       window.clearTimeout(timeoutId);
     }
