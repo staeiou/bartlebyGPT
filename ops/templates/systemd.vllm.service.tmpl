@@ -1,0 +1,19 @@
+[Unit]
+Description=vLLM inference server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory={{WORKDIR}}
+Environment="LD_LIBRARY_PATH={{LD_LIBRARY_PATH}}"
+ExecStart={{VLLM_BIN}} serve {{MODEL}} \
+    --host 0.0.0.0 \
+    --port 8000 {{EXTRA_ARGS}}
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
