@@ -1,4 +1,4 @@
-import { TURN_COUNT_KEY } from "./config.js";
+import { TURN_COUNT_KEY } from "./config.js?v=20260314e8";
 
 export function createAnalytics(state) {
   function gcReady() {
