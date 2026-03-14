@@ -1,5 +1,5 @@
-import { MODEL_MAX_CONTEXT_TOKENS, defaults, FEEDBACK_PATH } from "./config.js";
-import { coercePositiveInt, getEffectiveBaseUrl } from "./settings.js";
+import { MODEL_MAX_CONTEXT_TOKENS, defaults, FEEDBACK_PATH } from "./config.js?v=20260314e8";
+import { coercePositiveInt, getEffectiveBaseUrl } from "./settings.js?v=20260314e8";
 
 const ELLIPSIS = "\u2026";
 

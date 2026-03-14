@@ -1,9 +1,10 @@
 import {
   DEFAULT_BASE_URL,
+  ECO_BASE_URL,
   SETTINGS_KEY,
   POWER_PROFILES,
   defaults,
-} from "./config.js";
+} from "./config.js?v=20260314e8";
 
 export function coercePositiveInt(value, fallback) {
   const parsed = Number.parseInt(String(value), 10);
@@ -15,10 +16,94 @@ export function coerceFloat(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+export function getDeploymentDefaultBaseUrl() {
+  const hostname =
+    typeof window !== "undefined" && window.location && window.location.hostname
+      ? String(window.location.hostname).toLowerCase()
+      : "";
+
+  if (hostname === "eco.bartlebygpt.org") {
+    return ECO_BASE_URL;
+  }
+  return DEFAULT_BASE_URL;
+}
+
+function getDeploymentScope() {
+  const hostname =
+    typeof window !== "undefined" && window.location && window.location.hostname
+      ? String(window.location.hostname).toLowerCase()
+      : "";
+  if (hostname === "eco.bartlebygpt.org" || hostname === "apij.bartlebygpt.org") {
+    return "eco";
+  }
+  if (hostname === "api.bartlebygpt.org") {
+    return "api";
+  }
+  return "default";
+}
+
+function getScopedSettingsKey() {
+  return `${SETTINGS_KEY}:${getDeploymentScope()}`;
+}
+
+function normalizeStoredBaseUrl(baseUrl) {
+  const scope = getDeploymentScope();
+  const candidate = String(baseUrl || "").trim();
+  if (!candidate) return "";
+
+  try {
+    const parsed = new URL(candidate);
+    const hostname = parsed.hostname.toLowerCase();
+    if (scope === "eco" && hostname === "apij.bartlebygpt.org") {
+      return "";
+    }
+  } catch (_err) {
+    return "";
+  }
+
+  return candidate.replace(/\/+$/, "");
+}
+
+function getDeploymentDefaults() {
+  const deploymentBaseUrl = getDeploymentDefaultBaseUrl();
+  const resolvedAutoProfileId = deploymentBaseUrl === ECO_BASE_URL ? "eco-orin" : "home-sd";
+  const resolvedAutoProfile = POWER_PROFILES[resolvedAutoProfileId] || {};
+  const resolvedDefaults = resolvedAutoProfile.defaults || {};
+  return {
+    ...defaults,
+    baseUrl: "",
+    powerProfile: "auto-live",
+    wattsIdle: Number.isFinite(resolvedDefaults.wattsIdle) ? resolvedDefaults.wattsIdle : defaults.wattsIdle,
+    wattsActive: Number.isFinite(resolvedDefaults.wattsActive) ? resolvedDefaults.wattsActive : defaults.wattsActive,
+    gco2PerWh: Number.isFinite(resolvedDefaults.gco2PerWh) ? resolvedDefaults.gco2PerWh : defaults.gco2PerWh,
+    costPerKwh: Number.isFinite(resolvedDefaults.costPerKwh) ? resolvedDefaults.costPerKwh : defaults.costPerKwh,
+  };
+}
+
+function copySharedLegacySettings(parsed, deploymentDefaults) {
+  const migrated = { ...deploymentDefaults };
+  const sharedKeys = [
+    "modelName",
+    "apiKey",
+    "systemPrompt",
+    "maxInputChars",
+    "maxNewTokens",
+    "requestTimeout",
+    "temperature",
+    "topP",
+  ];
+  sharedKeys.forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(parsed, key)) {
+      migrated[key] = parsed[key];
+    }
+  });
+  return migrated;
+}
+
 export function getEffectiveBaseUrl(baseUrl) {
   const candidate = String(baseUrl || "").trim().replace(/\/+$/, "");
   if (!candidate) {
-    return DEFAULT_BASE_URL;
+    return getDeploymentDefaultBaseUrl();
   }
 
   let parsed;
@@ -37,15 +122,33 @@ export function getEffectiveBaseUrl(baseUrl) {
 export function createSettingsController(elements) {
   function loadSettings() {
     try {
-      const raw = localStorage.getItem(SETTINGS_KEY);
-      if (!raw) return { ...defaults };
+      const deploymentDefaults = getDeploymentDefaults();
+      const scopedKey = getScopedSettingsKey();
+      let raw = localStorage.getItem(scopedKey);
+      let fromLegacy = false;
+      if (!raw) {
+        const legacyRaw = localStorage.getItem(SETTINGS_KEY);
+        if (legacyRaw) {
+          raw = legacyRaw;
+          fromLegacy = true;
+        }
+      }
+      if (!raw) return deploymentDefaults;
 
       const parsed = JSON.parse(raw);
-      const merged = { ...defaults, ...parsed };
+      const merged = fromLegacy
+        ? copySharedLegacySettings(parsed, deploymentDefaults)
+        : { ...deploymentDefaults, ...parsed };
       let needsSave = false;
 
       if (!merged.powerProfile || !POWER_PROFILES[merged.powerProfile]) {
-        merged.powerProfile = defaults.powerProfile;
+        merged.powerProfile = deploymentDefaults.powerProfile;
+        needsSave = true;
+      }
+
+      const normalizedBaseUrl = normalizeStoredBaseUrl(merged.baseUrl);
+      if (normalizedBaseUrl !== String(merged.baseUrl || "").trim()) {
+        merged.baseUrl = normalizedBaseUrl;
         needsSave = true;
       }
 
@@ -64,13 +167,19 @@ export function createSettingsController(elements) {
 
       if (needsSave) {
         try {
-          localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
+          localStorage.setItem(scopedKey, JSON.stringify(merged));
+        } catch (_err) {}
+      }
+
+      if (fromLegacy) {
+        try {
+          localStorage.setItem(scopedKey, JSON.stringify(merged));
         } catch (_err) {}
       }
 
       return merged;
     } catch (_err) {
-      return { ...defaults };
+      return getDeploymentDefaults();
     }
   }
 
@@ -97,7 +206,7 @@ export function createSettingsController(elements) {
   function saveSettings() {
     const settings = getSettings();
     try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      localStorage.setItem(getScopedSettingsKey(), JSON.stringify(settings));
       return true;
     } catch (_err) {
       return false;
@@ -105,8 +214,9 @@ export function createSettingsController(elements) {
   }
 
   function applySettings(settings) {
+    const deploymentDefaultBaseUrl = getDeploymentDefaultBaseUrl();
     const visibleBaseUrl = String(settings.baseUrl || "").trim();
-    elements.baseUrl.value = visibleBaseUrl === DEFAULT_BASE_URL ? "" : visibleBaseUrl;
+    elements.baseUrl.value = visibleBaseUrl === deploymentDefaultBaseUrl ? "" : visibleBaseUrl;
     elements.modelName.value = settings.modelName;
     elements.apiKey.value = settings.apiKey;
     elements.systemPrompt.value = settings.systemPrompt;

@@ -4,7 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>BartlebyGPT</title>
-  <link rel="stylesheet" href="./assets/styles.css">
+  <script>
+    (function () {
+      var v = Date.now().toString(36);
+      window.__assetVersion = v;
+      var link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "./assets/styles.css?v=" + encodeURIComponent(v);
+      document.head.appendChild(link);
+    })();
+  </script>
+  <noscript><link rel="stylesheet" href="./assets/styles.css"></noscript>
   <script>
     window.goatcounter = window.goatcounter || {};
     Object.assign(window.goatcounter, {
@@ -110,7 +120,9 @@
             <label>
               POWER_PROFILE
               <select id="power-profile">
+                <option value="auto-live">Auto (Live Telemetry)</option>
                 <option value="home-sd">Home (San Diego, Quadro RTX 4000)</option>
+                <option value="eco-orin">Eco (Jetson Orin Nano Super 8GB)</option>
                 <option value="spokane-dc">TierPoint (Spokane, WA data center)</option>
               </select>
             </label>
@@ -194,6 +206,15 @@
     </div>
   </div>
 
-  <script type="module" src="./app/main.js"></script>
+  <script>
+    (function () {
+      var v = window.__assetVersion || Date.now().toString(36);
+      var script = document.createElement("script");
+      script.type = "module";
+      script.src = "./app/main.js?v=" + encodeURIComponent(v);
+      document.body.appendChild(script);
+    })();
+  </script>
+  <noscript><script type="module" src="./app/main.js"></script></noscript>
 </body>
 </html>
