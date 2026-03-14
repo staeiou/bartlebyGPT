@@ -1,5 +1,5 @@
-import { POWER_PROFILES, defaults } from "./config.js?v=20260314e8";
-import { getEffectiveBaseUrl } from "./settings.js?v=20260314e8";
+import { POWER_PROFILES, defaults } from "./config.js?v=20260314e9";
+import { getEffectiveBaseUrl } from "./settings.js?v=20260314e9";
 
 export function createPowerController({ elements, state, getSettings }) {
   let viewportMetricsRaf = 0;
@@ -383,9 +383,23 @@ export function createPowerController({ elements, state, getSettings }) {
     elements.powerActiveCount.textContent = activeCountText;
     elements.activeCountHeader.textContent = activeCountText;
     elements.powerDisplay.classList.toggle("is-active", activeCount > 0);
-    const modalPayload = profileId === "eco-orin" && Number.isFinite(displayWatts)
-      ? { ...payload, estimated_total_watts: displayWatts }
-      : payload;
+    let modalPayload = payload;
+    if (Number.isFinite(displayWatts)) {
+      if (profileId === "eco-orin") {
+        modalPayload = { ...payload, estimated_total_watts: displayWatts };
+      } else if (profileId === "home-sd") {
+        const homeMeasuredWatts = Number.isFinite(measuredGpuWatts) ? measuredGpuWatts : measuredServerWatts;
+        if (Number.isFinite(homeMeasuredWatts)) {
+          const homeBaseWatts = Math.max(0, displayWatts - homeMeasuredWatts);
+          modalPayload = {
+            ...payload,
+            base_system_watts: homeBaseWatts,
+            measured_server_watts: homeMeasuredWatts,
+            estimated_total_watts: displayWatts,
+          };
+        }
+      }
+    }
     updatePowerModalBody(resolution, modalPayload, costContext);
   }
 
