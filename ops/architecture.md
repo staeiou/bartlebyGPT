@@ -11,6 +11,11 @@
    - `/` -> optional static web app (`docs/` copy)
 4. `cloudflared` optionally exposes nginx via named/quick tunnel.
 
+## Backend Variants
+
+- Primary: `vLLM` (AWQ on Jetson, non-Jetson model per profile).
+- Alternate/fallback: `llama.cpp` source build on Jetson (see `ops/runbooks/llama-cpp-jetson.md`).
+
 ## Control Plane
 
 - `run-stack.sh` owns process lifecycle and generated nginx config.

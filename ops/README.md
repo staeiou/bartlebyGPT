@@ -18,6 +18,7 @@ Nothing here is served to end users.
 - `ops/bootstrap/bootstrap_jetson_fast.sh`: fast Jetson rebootstrap
 - `ops/config/profiles/*.env`: deployment-specific defaults
 - `ops/runbooks/*.md`: operator procedures
+  - `ops/runbooks/llama-cpp-jetson.md`: Jetson llama.cpp source-build notes
 - `ops/architecture.md`: stack and telemetry contract
 
 ## Quick Start
