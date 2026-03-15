@@ -1,11 +1,11 @@
-import { createAnalytics } from "./analytics.js?v=20260314e9";
-import { createChatApi } from "./chat-api.js?v=20260314e9";
-import { createChatUi } from "./chat-ui.js?v=20260314e9";
-import { getElements } from "./dom.js?v=20260314e9";
-import { createPowerController } from "./power.js?v=20260314e9";
-import { createSettingsController } from "./settings.js?v=20260314e9";
-import { createState } from "./state.js?v=20260314e9";
-import { createWelcomeController } from "./welcome.js?v=20260314e9";
+import { createAnalytics } from "./analytics.js?v=20260315f1";
+import { createChatApi } from "./chat-api.js?v=20260315f1";
+import { createChatUi } from "./chat-ui.js?v=20260315f1";
+import { getElements } from "./dom.js?v=20260315f1";
+import { createPowerController } from "./power.js?v=20260315f1";
+import { createSettingsController } from "./settings.js?v=20260315f1";
+import { createState } from "./state.js?v=20260315f1";
+import { createWelcomeController } from "./welcome.js?v=20260315f1";
 
 const elements = getElements();
 const state = createState();

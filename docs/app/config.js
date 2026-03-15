@@ -38,7 +38,7 @@ export const POWER_PROFILES = {
           modalHtml: [
             `<p>BartlebyGPT is a satire, but the cost data is genuine.</p>`,
             `<p>This mode automatically selects the most appropriate deployment profile for the active backend and uses live telemetry fields whenever available.</p>`,
-            `<p>On the main API deployment, Auto resolves to the home RTX profile. On the eco deployment, Auto resolves to the Jetson Orin profile.</p>`,
+            `<p>On the main API deployment, Auto resolves to the home RTX profile. On the eco deployment, Auto resolves to the Jetson Orin profile. On the Pi deployment, Auto resolves to the Raspberry Pi profile.</p>`,
             `<p>All parameters are adjustable under <em>Advanced</em>.</p>`,
           ].join(""),
         },
@@ -74,9 +74,28 @@ export const POWER_PROFILES = {
           modalHtml: [
             `<p>BartlebyGPT is a satire, but the cost data is genuine.</p>`,
             `<p>These figures reflect the live power consumption of BartlebyGPT's eco deployment, which runs in a residential home in San Diego, CA on a Jetson Orin Nano Super 8GB. The machine pulls roughly <strong>~8W</strong> at idle and scales up to about <strong>~21W</strong> at full load while serving a low-power inference stack.</p>`,
-            `<p><strong>Watts</strong> is the estimated total draw for all current BartlebyGPT users combined. For this deployment, we use live telemetry from Jetson power rails and add the configured fixed base overhead to estimate total wall draw. A small air conditioner window unit or TV with sound system pulls 400-600W, a fan pulls 50-75W, a MacBook Air streaming video pulls 20-30W, and an LED/CFL lightbulb pulls 10-15W.</p>`,
+            `<p><strong>Watts</strong> is the estimated total draw for all current BartlebyGPT users combined. For this deployment, we use live wall-power telemetry from an ESPHome smart plug behind the Jetson, so reported watts reflect total system draw directly. A small air conditioner window unit or TV with sound system pulls 400-600W, a fan pulls 50-75W, a MacBook Air streaming video pulls 20-30W, and an LED/CFL lightbulb pulls 10-15W.</p>`,
             `<p><strong>gCO₂/hr</strong> is the estimated carbon cost of that total estimated power draw: watts × grid carbon intensity. San Diego is served by <a href="https://sdcommunitypower.org/wp-content/uploads/2025/11/Community-Power-2024-Power-Content-Label.pdf">San Diego Community Power</a> cleaner energy program via SDG&amp;E, which has a ~53% renewables mix. This has an estimated emissions factor of ~0.200 gCO₂/Wh, though this varies with the grid mix and time of day. This does not include emissions from training and fine-tuning the model, manufacturing the hardware, disposing of end-of-life hardware, networking between your device and the server, or other inputs and externalities.</p>`,
             `<p><strong>$/hr</strong> is the estimated electricity cost accrued continuously whether idle or busy, shared across all users of the site. It is computed in real time from SDG&amp;E TOU-DR2 all-in variable energy rates (on/off-peak) and excludes fixed charges, taxes, and baseline credits.</p>`,
+            `<p>All parameters are adjustable under <em>Advanced</em>.</p>`,
+          ].join(""),
+        },
+        "pi-rpi4": {
+          label: "Pi (Raspberry Pi 4B)",
+          costMode: "per-kwh",
+          overheadMultiplier: 1.0,
+          defaults: {
+            wattsIdle: 3,
+            wattsActive: 12,
+            gco2PerWh: 0.200,
+            costPerKwh: 0.55,
+          },
+          modalHtml: [
+            `<p>BartlebyGPT is a satire, but the cost data is genuine.</p>`,
+            `<p>These figures reflect the live power consumption of the Pi deployment, which runs on a Raspberry Pi 4B using llama.cpp.</p>`,
+            `<p><strong>Watts</strong> is the estimated total draw for all current BartlebyGPT users combined. For this deployment, we use live wall-power telemetry from an ESPHome smart plug behind the Pi, so reported watts reflect total system draw directly.</p>`,
+            `<p><strong>gCO₂/hr</strong> is the estimated carbon cost of that total estimated power draw: watts × grid carbon intensity. This uses the same configurable emissions factor as other deployments.</p>`,
+            `<p><strong>$/hr</strong> is the estimated electricity cost accrued continuously whether idle or busy, shared across all users of the site. It is computed from configured per-kWh rates.</p>`,
             `<p>All parameters are adjustable under <em>Advanced</em>.</p>`,
           ].join(""),
         },

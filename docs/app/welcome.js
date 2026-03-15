@@ -1,4 +1,4 @@
-import { getAllPrompts, getStarterPrompts, PROMPT_ORDER } from "./prompts.js?v=20260314e9";
+import { getAllPrompts, getStarterPrompts, PROMPT_ORDER } from "./prompts.js?v=20260315f1";
 
 const EM_DASH = "\u2014";
 

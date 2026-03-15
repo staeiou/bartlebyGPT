@@ -2,8 +2,8 @@ import {
   CHARS_PER_TOKEN_ESTIMATE,
   MODEL_MAX_CONTEXT_TOKENS,
   TOKEN_SAFETY_MARGIN,
-} from "./config.js?v=20260314e9";
-import { getEffectiveBaseUrl } from "./settings.js?v=20260314e9";
+} from "./config.js?v=20260315f1";
+import { getEffectiveBaseUrl } from "./settings.js?v=20260315f1";
 
 export function createChatApi({ state, gcCount }) {
   function createRequestError(message, { status, retryable = false, cause } = {}) {

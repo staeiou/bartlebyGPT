@@ -1,5 +1,5 @@
-import { POWER_PROFILES, defaults } from "./config.js?v=20260314e9";
-import { getEffectiveBaseUrl } from "./settings.js?v=20260314e9";
+import { POWER_PROFILES, defaults } from "./config.js?v=20260315f1";
+import { getEffectiveBaseUrl } from "./settings.js?v=20260315f1";
 
 export function createPowerController({ elements, state, getSettings }) {
   let viewportMetricsRaf = 0;
@@ -50,6 +50,9 @@ export function createPowerController({ elements, state, getSettings }) {
     if (appHostname === "eco.bartlebygpt.org" || appHostname === "apij.bartlebygpt.org") {
       return "eco-orin";
     }
+    if (appHostname === "pi.bartlebygpt.org") {
+      return "pi-rpi4";
+    }
     if (appHostname === "api.bartlebygpt.org") {
       return "home-sd";
     }
@@ -58,6 +61,9 @@ export function createPowerController({ elements, state, getSettings }) {
     const hostname = parseHostnameFromBaseUrl(effectiveBaseUrl);
     if (hostname === "eco.bartlebygpt.org" || hostname === "apij.bartlebygpt.org") {
       return "eco-orin";
+    }
+    if (hostname === "pi.bartlebygpt.org") {
+      return "pi-rpi4";
     }
     if (hostname === "api.bartlebygpt.org") {
       return "home-sd";
@@ -214,7 +220,7 @@ export function createPowerController({ elements, state, getSettings }) {
   }
 
   function isSdTouProfile(profileId) {
-    return profileId === "home-sd" || profileId === "eco-orin";
+    return profileId === "home-sd" || profileId === "eco-orin" || profileId === "pi-rpi4";
   }
 
   function computeCostPerHr(watts, settings, profile, profileId) {
