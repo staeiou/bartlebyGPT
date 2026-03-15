@@ -55,6 +55,9 @@ fi
 STACK_MODE="process"
 USE_EXISTING_INFERENCE="${USE_EXISTING_INFERENCE:-1}"
 INFERENCE_BACKEND="${INFERENCE_BACKEND:-vllm}"
+CLOUDFLARE_TUNNEL_TOKEN="${CLOUDFLARE_TUNNEL_TOKEN:-}"
+CLOUDFLARE_PUBLIC_HOSTNAME="${CLOUDFLARE_PUBLIC_HOSTNAME:-}"
+ENABLE_CLOUDFLARE_TUNNEL="${ENABLE_CLOUDFLARE_TUNNEL:-}"
 
 if [[ "${INFERENCE_BACKEND}" == "llama-server" ]]; then
   INFERENCE_SERVICE_DEFAULT="bartleby-llama.service"
@@ -68,11 +71,25 @@ echo "Inference backend: ${INFERENCE_BACKEND}"
 echo "Inference dependency: ${INFERENCE_SYSTEMD_UNIT}"
 
 ${SUDO} mkdir -p "$(dirname "${ENV_FILE}")"
-${SUDO} tee "${ENV_FILE}" >/dev/null <<EOF
+tmp_env="$(mktemp)"
+cat >"${tmp_env}" <<EOF
 PROFILE_FILE=${PROFILE_FILE}
 STACK_MODE=${STACK_MODE}
 USE_EXISTING_INFERENCE=${USE_EXISTING_INFERENCE}
 EOF
+
+if [[ -n "${ENABLE_CLOUDFLARE_TUNNEL}" ]]; then
+  echo "ENABLE_CLOUDFLARE_TUNNEL=${ENABLE_CLOUDFLARE_TUNNEL}" >>"${tmp_env}"
+fi
+if [[ -n "${CLOUDFLARE_PUBLIC_HOSTNAME}" ]]; then
+  echo "CLOUDFLARE_PUBLIC_HOSTNAME=${CLOUDFLARE_PUBLIC_HOSTNAME}" >>"${tmp_env}"
+fi
+if [[ -n "${CLOUDFLARE_TUNNEL_TOKEN}" ]]; then
+  echo "CLOUDFLARE_TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}" >>"${tmp_env}"
+fi
+
+${SUDO} cp "${tmp_env}" "${ENV_FILE}"
+rm -f "${tmp_env}"
 ${SUDO} chmod 0644 "${ENV_FILE}"
 
 ${SUDO} tee "${SERVICE_FILE}" >/dev/null <<EOF

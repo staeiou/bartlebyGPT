@@ -95,6 +95,9 @@ sudo PROFILE=eco-jetson ./ops/bootstrap/bootstrap_stack_service.sh
 
 # Raspberry Pi full stack at boot (reuses bartleby-llama.service)
 sudo PROFILE=rpi4-llama-live ./ops/bootstrap/bootstrap_stack_service.sh
+
+# If using a named Cloudflare tunnel/domain, include token on install:
+sudo PROFILE=rpi4-llama-live CLOUDFLARE_TUNNEL_TOKEN=... ./ops/bootstrap/bootstrap_stack_service.sh
 ```
 
 Pod/container (no systemd) example:
