@@ -21,9 +21,16 @@ export function getDeploymentDefaultBaseUrl() {
     typeof window !== "undefined" && window.location && window.location.hostname
       ? String(window.location.hostname).toLowerCase()
       : "";
+  const origin =
+    typeof window !== "undefined" && window.location && window.location.origin
+      ? String(window.location.origin).replace(/\/+$/, "")
+      : "";
 
   if (hostname === "eco.bartlebygpt.org") {
     return ECO_BASE_URL;
+  }
+  if (hostname === "pi.bartlebygpt.org" && origin) {
+    return origin;
   }
   return DEFAULT_BASE_URL;
 }
@@ -33,6 +40,9 @@ function getDeploymentScope() {
     typeof window !== "undefined" && window.location && window.location.hostname
       ? String(window.location.hostname).toLowerCase()
       : "";
+  if (hostname === "pi.bartlebygpt.org") {
+    return "pi";
+  }
   if (hostname === "eco.bartlebygpt.org" || hostname === "apij.bartlebygpt.org") {
     return "eco";
   }

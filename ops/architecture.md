@@ -3,6 +3,7 @@
 ## Runtime Components
 
 1. `vLLM` serves model inference on local port (`VLLM_PORT`, default `8000`).
+   - Raspberry Pi path can use `llama-server` on the same local port.
 2. `power_telemetry.py` samples power + load and serves `/telemetry/power`.
 3. `nginx` fronts public port (`PUBLIC_PORT`, default `18201`) and proxies:
    - `/v1/*` -> vLLM
@@ -15,6 +16,12 @@
 
 - `run-stack.sh` owns process lifecycle and generated nginx config.
 - deployment variance is primarily profile-driven (`ops/config/profiles/*.env`).
+- Raspberry Pi also has a systemd-first control path via:
+  - `ops/bootstrap/bootstrap_rpi_llama_full.sh`
+  - `ops/bootstrap/bootstrap_rpi_llama_fast.sh`
+- `run-stack.sh` supports:
+  - `STACK_MODE=process` for foreground runtime (`vllm` or `llama-server`)
+  - `STACK_MODE=systemd` as a dispatcher to bootstrap scripts
 
 ## Telemetry Contract (Stable)
 
@@ -45,7 +52,12 @@ Current profiles:
 
 - `eco-jetson`: Jetson Orin Nano Super 8GB stack and eco hostname defaults.
 - `home-rtx4000`: home RTX API defaults and no web app serving.
+- `rpi4-llama`: Raspberry Pi 4B llama.cpp/systemd defaults.
+- `rpi4-llama-live`: Raspberry Pi live web+tunnel profile in process mode.
+- `eco-jetson-systemd`: run-stack systemd dispatcher for Jetson bootstrap.
+- `rpi4-llama-systemd`: run-stack systemd dispatcher for Pi bootstrap.
+- `rtx-pod-vllm`: pod/container vLLM process-mode profile (no systemd).
 
 Future:
 
-- add `pi-*` profiles that keep the same telemetry contract.
+- add additional `pi-*` profiles that keep the same telemetry contract.

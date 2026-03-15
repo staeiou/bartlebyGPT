@@ -41,6 +41,13 @@ if [[ -n "${PROFILE_FILE}" ]]; then
   set +a
 fi
 
+# process: existing foreground stack launcher
+# systemd: delegate to host-specific bootstrap scripts that manage services
+STACK_MODE="${STACK_MODE:-process}"
+INFERENCE_BACKEND="${INFERENCE_BACKEND:-vllm}"
+SYSTEMD_BOOTSTRAP_SCRIPT="${SYSTEMD_BOOTSTRAP_SCRIPT:-}"
+BOOTSTRAP_PROFILE="${BOOTSTRAP_PROFILE:-}"
+
 VLLM_HOST="${VLLM_HOST:-127.0.0.1}"
 VLLM_PORT="${VLLM_PORT:-8000}"
 PUBLIC_PORT="${PUBLIC_PORT:-18201}"
@@ -65,6 +72,13 @@ VENV_DIR="${VENV_DIR:-/opt/vllm-venv}"
 VLLM_PACKAGE_SPEC="${VLLM_PACKAGE_SPEC:-vllm}"
 VLLM_BIN="${VLLM_BIN:-${VENV_DIR}/bin/vllm}"
 VLLM_LOG="${VLLM_LOG:-/var/log/vllm.log}"
+LLAMA_SERVER_BIN="${LLAMA_SERVER_BIN:-/opt/llama.cpp/build/bin/llama-server}"
+LLAMA_LOG="${LLAMA_LOG:-/var/log/llama-server.log}"
+LLAMA_MODEL="${LLAMA_MODEL:-/opt/models/bartleby/bartleby-qwen3-1.7b_v4-Q4_K_M.gguf}"
+LLAMA_CTX="${LLAMA_CTX:-512}"
+LLAMA_THREADS="${LLAMA_THREADS:-4}"
+LLAMA_PARALLEL="${LLAMA_PARALLEL:-1}"
+LLAMA_EXTRA_ARGS="${LLAMA_EXTRA_ARGS:-}"
 NGINX_ACCESS_LOG="${NGINX_ACCESS_LOG:-/var/log/nginx/vllm_access.log}"
 NGINX_ERROR_LOG="${NGINX_ERROR_LOG:-/var/log/nginx/vllm_error.log}"
 NGINX_CONF_PATH="${NGINX_CONF_PATH:-/etc/nginx/conf.d/vllm_proxy.conf}"
@@ -134,8 +148,13 @@ WAIT_FOR_VLLM_SECONDS="${WAIT_FOR_VLLM_SECONDS:-180}"
 WAIT_FOR_CLOUDFLARE_URL_SECONDS="${WAIT_FOR_CLOUDFLARE_URL_SECONDS:-60}"
 NGINX_CLIENT_MAX_BODY_SIZE="${NGINX_CLIENT_MAX_BODY_SIZE:-20m}"
 
-if [[ -z "${MODEL}" ]]; then
-  echo "MODEL is required. Example: MODEL=Qwen/Qwen3-4B bash $0" >&2
+if [[ "${INFERENCE_BACKEND}" == "vllm" && -z "${MODEL}" ]]; then
+  echo "MODEL is required for INFERENCE_BACKEND=vllm." >&2
+  exit 1
+fi
+
+if [[ "${INFERENCE_BACKEND}" == "llama-server" && -z "${LLAMA_MODEL}" ]]; then
+  echo "LLAMA_MODEL is required for INFERENCE_BACKEND=llama-server." >&2
   exit 1
 fi
 
@@ -150,6 +169,42 @@ fi
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1
+}
+
+run_systemd_bootstrap() {
+  local bootstrap_script="${SYSTEMD_BOOTSTRAP_SCRIPT:-}"
+
+  if [[ -z "${bootstrap_script}" ]]; then
+    if [[ "${INFERENCE_BACKEND}" == "llama-server" ]]; then
+      bootstrap_script="${OPS_DIR}/bootstrap/bootstrap_rpi_llama_fast.sh"
+    elif [[ "${INFERENCE_BACKEND}" == "vllm" && "${IS_JETSON}" == "1" ]]; then
+      bootstrap_script="${OPS_DIR}/bootstrap/bootstrap_jetson_fast.sh"
+    else
+      echo "No default systemd bootstrap script for INFERENCE_BACKEND=${INFERENCE_BACKEND}, IS_JETSON=${IS_JETSON}." >&2
+      echo "Set SYSTEMD_BOOTSTRAP_SCRIPT explicitly, or use STACK_MODE=process for pod/container runtime." >&2
+      exit 1
+    fi
+  fi
+
+  if [[ "${bootstrap_script}" != /* ]]; then
+    bootstrap_script="${REPO_ROOT}/${bootstrap_script#./}"
+  fi
+  if [[ ! -x "${bootstrap_script}" ]]; then
+    echo "Systemd bootstrap script is not executable: ${bootstrap_script}" >&2
+    exit 1
+  fi
+
+  if [[ -z "${BOOTSTRAP_PROFILE}" && "${INFERENCE_BACKEND}" == "llama-server" ]]; then
+    BOOTSTRAP_PROFILE="rpi4-llama"
+  fi
+
+  echo "STACK_MODE=systemd, delegating to ${bootstrap_script}"
+  if [[ -n "${BOOTSTRAP_PROFILE}" ]]; then
+    echo "Using bootstrap profile: ${BOOTSTRAP_PROFILE}"
+    "${SUDO[@]}" env PROFILE="${BOOTSTRAP_PROFILE}" "${bootstrap_script}"
+  else
+    "${SUDO[@]}" "${bootstrap_script}"
+  fi
 }
 
 install_base_packages() {
@@ -542,6 +597,52 @@ start_vllm() {
   VLLM_PID=$!
 }
 
+start_llama_server() {
+  "${SUDO[@]}" mkdir -p "$(dirname "${LLAMA_LOG}")"
+  "${SUDO[@]}" touch "${LLAMA_LOG}"
+
+  if [[ ! -x "${LLAMA_SERVER_BIN}" ]]; then
+    echo "llama-server binary not found: ${LLAMA_SERVER_BIN}" >&2
+    echo "Run bootstrap_rpi_llama_full.sh first, or set LLAMA_SERVER_BIN." >&2
+    exit 1
+  fi
+
+  if [[ ! -f "${LLAMA_MODEL}" ]]; then
+    echo "llama model not found: ${LLAMA_MODEL}" >&2
+    echo "Run bootstrap_rpi_llama_full.sh first, or set LLAMA_MODEL." >&2
+    exit 1
+  fi
+
+  local -a args=(
+    "${LLAMA_SERVER_BIN}"
+    -m "${LLAMA_MODEL}"
+    --host "${VLLM_HOST}"
+    --port "${VLLM_PORT}"
+    -c "${LLAMA_CTX}"
+    -t "${LLAMA_THREADS}"
+    -np "${LLAMA_PARALLEL}"
+  )
+
+  if [[ -n "${LLAMA_EXTRA_ARGS}" ]]; then
+    # Intentional word splitting so callers can pass raw extra CLI flags.
+    read -r -a extra_args <<<"${LLAMA_EXTRA_ARGS}"
+    args+=("${extra_args[@]}")
+  fi
+
+  echo "Starting llama-server: ${args[*]}"
+  if [[ ${#SUDO[@]} -eq 0 ]]; then
+    "${args[@]}" >>"${LLAMA_LOG}" 2>&1 &
+  else
+    local quoted_args=()
+    local arg
+    for arg in "${args[@]}"; do
+      quoted_args+=("$(printf '%q' "${arg}")")
+    done
+    "${SUDO[@]}" bash -lc "exec ${quoted_args[*]} >>$(printf '%q' "${LLAMA_LOG}") 2>&1" &
+  fi
+  VLLM_PID=$!
+}
+
 start_telemetry() {
   "${SUDO[@]}" mkdir -p "$(dirname "${TELEMETRY_LOG}")"
   "${SUDO[@]}" touch "${TELEMETRY_LOG}"
@@ -703,14 +804,18 @@ wait_for_vllm() {
 
   while (( SECONDS < deadline )); do
     if curl -fsS "http://${VLLM_HOST}:${VLLM_PORT}/health" >/dev/null 2>&1; then
-      echo "vLLM is healthy at http://${VLLM_HOST}:${VLLM_PORT}"
+      echo "${INFERENCE_BACKEND} is healthy at http://${VLLM_HOST}:${VLLM_PORT}"
       return
     fi
     sleep 1
   done
 
-  echo "Timed out waiting for vLLM health endpoint. Recent log tail:" >&2
-  "${SUDO[@]}" tail -n 80 "${VLLM_LOG}" >&2 || true
+  echo "Timed out waiting for ${INFERENCE_BACKEND} health endpoint. Recent log tail:" >&2
+  if [[ "${INFERENCE_BACKEND}" == "llama-server" ]]; then
+    "${SUDO[@]}" tail -n 80 "${LLAMA_LOG}" >&2 || true
+  else
+    "${SUDO[@]}" tail -n 80 "${VLLM_LOG}" >&2 || true
+  fi
   exit 1
 }
 
@@ -728,14 +833,31 @@ cleanup() {
 }
 
 main() {
+  if [[ "${STACK_MODE}" == "systemd" ]]; then
+    run_systemd_bootstrap
+    return
+  fi
+
+  if [[ "${INFERENCE_BACKEND}" != "vllm" && "${INFERENCE_BACKEND}" != "llama-server" ]]; then
+    echo "Unsupported INFERENCE_BACKEND in STACK_MODE=process: ${INFERENCE_BACKEND}" >&2
+    echo "Supported backends: vllm, llama-server" >&2
+    exit 1
+  fi
+
   trap cleanup EXIT INT TERM
 
   install_base_packages
-  install_uv
-  bootstrap_vllm_env
+  if [[ "${INFERENCE_BACKEND}" == "vllm" ]]; then
+    install_uv
+    bootstrap_vllm_env
+  fi
   prepare_web_app_assets
   write_nginx_config
-  start_vllm
+  if [[ "${INFERENCE_BACKEND}" == "llama-server" ]]; then
+    start_llama_server
+  else
+    start_vllm
+  fi
   wait_for_vllm
   start_telemetry
   wait_for_telemetry
