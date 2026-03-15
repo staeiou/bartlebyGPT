@@ -17,6 +17,11 @@
 - Primary: `vLLM` (AWQ on Jetson, non-Jetson model per profile).
 - Alternate/fallback: `llama.cpp` source build on Jetson (see `ops/runbooks/llama-cpp-jetson.md`).
 
+## Power Backends
+
+- `jtop` / `nvidia-smi`: component load power (telemetry derives wall estimate with base + multiplier).
+- `esphome`: direct wall-total watts from a smart plug endpoint (for example, `/sensor/power`).
+
 ## Control Plane
 
 - `run-stack.sh` owns process lifecycle and generated nginx config.
@@ -24,6 +29,8 @@
 - Raspberry Pi also has a systemd-first control path via:
   - `ops/bootstrap/bootstrap_rpi_llama_full.sh`
   - `ops/bootstrap/bootstrap_rpi_llama_fast.sh`
+- Full stack boot persistence (nginx + telemetry + tunnel + process orchestration):
+  - `ops/bootstrap/bootstrap_stack_service.sh` installs a systemd unit around `run-stack.sh`
 - `run-stack.sh` supports:
   - `STACK_MODE=process` for foreground runtime (`vllm` or `llama-server`)
   - `STACK_MODE=systemd` as a dispatcher to bootstrap scripts

@@ -126,6 +126,9 @@ TELEMETRY_IDLE_GPU_WATTS="${TELEMETRY_IDLE_GPU_WATTS:-${DEFAULT_TELEMETRY_IDLE_G
 TELEMETRY_BASE_SYSTEM_WATTS="${TELEMETRY_BASE_SYSTEM_WATTS:-${DEFAULT_TELEMETRY_BASE_SYSTEM_WATTS}}"
 TELEMETRY_GPU_COOLING_MULTIPLIER="${TELEMETRY_GPU_COOLING_MULTIPLIER:-${DEFAULT_TELEMETRY_GPU_COOLING_MULTIPLIER}}"
 TELEMETRY_POWER_BACKEND="${TELEMETRY_POWER_BACKEND:-${DEFAULT_TELEMETRY_POWER_BACKEND}}"
+TELEMETRY_ESPHOME_POWER_URL="${TELEMETRY_ESPHOME_POWER_URL:-}"
+TELEMETRY_ESPHOME_BASE_URL="${TELEMETRY_ESPHOME_BASE_URL:-}"
+TELEMETRY_ESPHOME_POWER_PATH="${TELEMETRY_ESPHOME_POWER_PATH:-/sensor/power}"
 
 VLLM_API_KEY="${VLLM_API_KEY:-}"
 VLLM_EXTRA_ARGS="${VLLM_EXTRA_ARGS:-${DEFAULT_VLLM_EXTRA_ARGS}}"
@@ -147,6 +150,8 @@ NGINX_CORS_ALLOW_HEADERS="${NGINX_CORS_ALLOW_HEADERS:-*}"
 WAIT_FOR_VLLM_SECONDS="${WAIT_FOR_VLLM_SECONDS:-180}"
 WAIT_FOR_CLOUDFLARE_URL_SECONDS="${WAIT_FOR_CLOUDFLARE_URL_SECONDS:-60}"
 NGINX_CLIENT_MAX_BODY_SIZE="${NGINX_CLIENT_MAX_BODY_SIZE:-20m}"
+USE_EXISTING_INFERENCE="${USE_EXISTING_INFERENCE:-0}"
+SKIP_INFERENCE_START=0
 
 if [[ "${INFERENCE_BACKEND}" == "vllm" && -z "${MODEL}" ]]; then
   echo "MODEL is required for INFERENCE_BACKEND=vllm." >&2
@@ -169,6 +174,35 @@ fi
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1
+}
+
+inference_health_url() {
+  echo "http://${VLLM_HOST}:${VLLM_PORT}/health"
+}
+
+inference_is_healthy() {
+  curl -fsS --max-time 2 "$(inference_health_url)" >/dev/null 2>&1
+}
+
+check_existing_inference() {
+  if [[ "${USE_EXISTING_INFERENCE}" == "1" ]]; then
+    SKIP_INFERENCE_START=1
+    echo "Configured to reuse existing inference service (USE_EXISTING_INFERENCE=1)."
+    return
+  fi
+
+  if ! inference_is_healthy; then
+    return
+  fi
+
+  local url
+  url="$(inference_health_url)"
+  echo "Inference service already healthy at ${url}." >&2
+  echo "Refusing to start a second ${INFERENCE_BACKEND} instance in STACK_MODE=process." >&2
+  echo "To proceed, do one of the following:" >&2
+  echo "  1) Stop existing inference first (example: sudo systemctl stop vllm)" >&2
+  echo "  2) Reuse existing inference by setting USE_EXISTING_INFERENCE=1" >&2
+  exit 1
 }
 
 run_systemd_bootstrap() {
@@ -520,11 +554,36 @@ ${web_app_location_block}
 }
 EOF
 
-  if [[ -e /etc/nginx/sites-enabled/default && ! -e /etc/nginx/sites-enabled/default.disabled ]]; then
-    "${SUDO[@]}" mv /etc/nginx/sites-enabled/default /etc/nginx/sites-enabled/default.disabled
+  # Ubuntu/Debian include `sites-enabled/*`; renaming to `*.disabled` still matches.
+  # Remove default site symlink/file from sites-enabled entirely.
+  if [[ -e /etc/nginx/sites-enabled/default ]]; then
+    "${SUDO[@]}" rm -f /etc/nginx/sites-enabled/default
+  fi
+  if [[ -e /etc/nginx/sites-enabled/default.disabled ]]; then
+    "${SUDO[@]}" rm -f /etc/nginx/sites-enabled/default.disabled
   fi
 
   "${SUDO[@]}" nginx -t
+}
+
+stop_existing_nginx() {
+  if "${SUDO[@]}" pgrep -x nginx >/dev/null 2>&1; then
+    echo "Stopping existing nginx workers before foreground start..."
+    "${SUDO[@]}" nginx -s quit >/dev/null 2>&1 || true
+
+    local deadline=$((SECONDS + 10))
+    while (( SECONDS < deadline )); do
+      if ! "${SUDO[@]}" pgrep -x nginx >/dev/null 2>&1; then
+        break
+      fi
+      sleep 1
+    done
+
+    if "${SUDO[@]}" pgrep -x nginx >/dev/null 2>&1; then
+      echo "nginx workers still running after graceful stop; forcing termination..."
+      "${SUDO[@]}" pkill -x nginx >/dev/null 2>&1 || true
+    fi
+  fi
 }
 
 prepare_web_app_assets() {
@@ -660,6 +719,9 @@ start_telemetry() {
     "TELEMETRY_BASE_SYSTEM_WATTS=${TELEMETRY_BASE_SYSTEM_WATTS}"
     "TELEMETRY_GPU_COOLING_MULTIPLIER=${TELEMETRY_GPU_COOLING_MULTIPLIER}"
     "TELEMETRY_POWER_BACKEND=${TELEMETRY_POWER_BACKEND}"
+    "TELEMETRY_ESPHOME_POWER_URL=${TELEMETRY_ESPHOME_POWER_URL}"
+    "TELEMETRY_ESPHOME_BASE_URL=${TELEMETRY_ESPHOME_BASE_URL}"
+    "TELEMETRY_ESPHOME_POWER_PATH=${TELEMETRY_ESPHOME_POWER_PATH}"
     "TELEMETRY_VLLM_BASE_URL=http://${VLLM_HOST}:${VLLM_PORT}"
   )
 
@@ -853,20 +915,26 @@ main() {
   fi
   prepare_web_app_assets
   write_nginx_config
-  if [[ "${INFERENCE_BACKEND}" == "llama-server" ]]; then
-    start_llama_server
+  check_existing_inference
+  if [[ "${SKIP_INFERENCE_START}" == "1" ]]; then
+    echo "Skipping ${INFERENCE_BACKEND} start; using existing service."
   else
-    start_vllm
+    if [[ "${INFERENCE_BACKEND}" == "llama-server" ]]; then
+      start_llama_server
+    else
+      start_vllm
+    fi
   fi
   wait_for_vllm
   start_telemetry
   wait_for_telemetry
 
-  start_cloudflare_tunnel
-  wait_for_cloudflare_url
-
+  stop_existing_nginx
   echo "Starting nginx on port ${PUBLIC_PORT}"
   "${SUDO[@]}" nginx -g 'daemon off;' &
+
+  start_cloudflare_tunnel
+  wait_for_cloudflare_url
 
   wait_for_public_endpoint
 

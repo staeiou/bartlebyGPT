@@ -19,6 +19,7 @@ Nothing here is served to end users.
 - `ops/bootstrap/bootstrap_jetson_fast.sh`: fast Jetson rebootstrap
 - `ops/bootstrap/bootstrap_rpi_llama_full.sh`: full Pi bootstrap (`llama-server` + systemd)
 - `ops/bootstrap/bootstrap_rpi_llama_fast.sh`: fast Pi rebootstrap (`llama-server` + systemd)
+- `ops/bootstrap/bootstrap_stack_service.sh`: install boot-persistent full stack service (`run-stack.sh`)
 - `ops/config/profiles/*.env`: deployment-specific defaults
 - `ops/runbooks/*.md`: operator procedures
   - `ops/runbooks/llama-cpp-jetson.md`: Jetson llama.cpp source-build notes
@@ -86,6 +87,16 @@ sudo PROFILE=rpi4-llama-systemd ./ops/scripts/run-stack.sh
 sudo PROFILE=eco-jetson-systemd ./ops/scripts/run-stack.sh
 ```
 
+Boot-persistent full stack examples (run once, then auto-start on boot):
+
+```bash
+# Jetson full stack at boot (reuses vllm.service)
+sudo PROFILE=eco-jetson ./ops/bootstrap/bootstrap_stack_service.sh
+
+# Raspberry Pi full stack at boot (reuses bartleby-llama.service)
+sudo PROFILE=rpi4-llama-live ./ops/bootstrap/bootstrap_stack_service.sh
+```
+
 Pod/container (no systemd) example:
 
 ```bash
@@ -114,6 +125,9 @@ sudo PROFILE_FILE=./ops/config/profiles/eco-jetson.env ./ops/scripts/run-stack.s
 - Caller-provided env vars still work and can override profile values.
 - `docs/` remains the frontend bundle source for optional nginx web serving.
 - Keep one telemetry schema across all deployments (Jetson, RTX, future Pi).
+- Smart plug wall-power mode is supported via:
+  - `TELEMETRY_POWER_BACKEND=esphome`
+  - `TELEMETRY_ESPHOME_POWER_URL=http://<plug-ip>/sensor/power`
 - `run-stack.sh` process mode is best for pod/container and for live web+tunnel foreground runs.
 - Pi systemd scripts are best for persistent inference service management on bare metal.
 - `STACK_MODE=systemd` in `run-stack.sh` is a dispatcher for bootstrap scripts, not a full-systemd replacement for every component.

@@ -8,6 +8,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import URLError
+from urllib.parse import urljoin
 from urllib.request import urlopen
 
 
@@ -18,6 +19,9 @@ VLLM_BASE_URL = os.environ.get("TELEMETRY_VLLM_BASE_URL", "http://127.0.0.1:8000
 POWER_BACKEND = os.environ.get("TELEMETRY_POWER_BACKEND", "auto").strip().lower()
 NVIDIA_SMI_BIN = os.environ.get("NVIDIA_SMI_BIN", "nvidia-smi")
 REQUEST_TIMEOUT = float(os.environ.get("TELEMETRY_REQUEST_TIMEOUT", "1.5"))
+ESPHOME_POWER_URL = os.environ.get("TELEMETRY_ESPHOME_POWER_URL", "").strip()
+ESPHOME_BASE_URL = os.environ.get("TELEMETRY_ESPHOME_BASE_URL", "").strip().rstrip("/")
+ESPHOME_POWER_PATH = os.environ.get("TELEMETRY_ESPHOME_POWER_PATH", "/sensor/power").strip()
 IS_JETSON = os.path.isfile("/etc/nv_tegra_release")
 DEFAULT_IDLE_GPU_WATTS = float(
     os.environ.get("TELEMETRY_IDLE_GPU_WATTS", "2" if IS_JETSON else "35")
@@ -50,6 +54,7 @@ STATE = {
     "is_active": False,
     "source": "fallback",
     "power_backend": "none",
+    "power_measurement_kind": "none",
     "power_rails_watts": {},
     "last_error": "",
 }
@@ -135,15 +140,51 @@ def parse_metrics(metrics_text):
     return int(round(running)), int(round(waiting))
 
 
+def resolve_esphome_power_url():
+    if ESPHOME_POWER_URL:
+        return ESPHOME_POWER_URL
+    if not ESPHOME_BASE_URL:
+        raise RuntimeError(
+            "esphome backend requires TELEMETRY_ESPHOME_POWER_URL or TELEMETRY_ESPHOME_BASE_URL"
+        )
+    path = ESPHOME_POWER_PATH if ESPHOME_POWER_PATH else "/sensor/power"
+    if not path.startswith("/"):
+        path = f"/{path}"
+    return urljoin(f"{ESPHOME_BASE_URL}/", path.lstrip("/"))
+
+
+def read_esphome_power_watts():
+    payload = json.loads(fetch_text(resolve_esphome_power_url()))
+    raw_value = payload.get("value")
+    if raw_value is None:
+        state_value = str(payload.get("state", ""))
+        match = re.search(r"([-+]?[0-9]*\.?[0-9]+)", state_value)
+        if match:
+            raw_value = match.group(1)
+    if raw_value is None:
+        raise RuntimeError("esphome power payload missing value/state")
+    watts = float(raw_value)
+    if watts < 0:
+        raise RuntimeError(f"esphome power payload had invalid negative watts: {watts}")
+    return watts, {}, "esphome", True
+
+
 def power_backends_in_order():
     if POWER_BACKEND == "jtop":
         return ["jtop"]
     if POWER_BACKEND == "nvidia-smi":
         return ["nvidia-smi"]
+    if POWER_BACKEND == "esphome":
+        return ["esphome"]
     if POWER_BACKEND == "auto":
+        order = []
+        if ESPHOME_POWER_URL or ESPHOME_BASE_URL:
+            order.append("esphome")
         if IS_JETSON:
-            return ["jtop", "nvidia-smi"]
-        return ["nvidia-smi", "jtop"]
+            order.extend(["jtop", "nvidia-smi"])
+        else:
+            order.extend(["nvidia-smi", "jtop"])
+        return order
     return [POWER_BACKEND]
 
 
@@ -153,12 +194,14 @@ def read_power_watts():
         try:
             if backend == "jtop":
                 watts, rails_watts, source = read_jtop_power_watts()
-                return watts, rails_watts, source
+                return watts, rails_watts, source, False
             if backend == "nvidia-smi":
                 watts = read_nvidia_smi_watts()
-                return watts, {}, "nvidia-smi"
+                return watts, {}, "nvidia-smi", False
+            if backend == "esphome":
+                return read_esphome_power_watts()
             errors.append(f"{backend}: unsupported backend")
-        except (OSError, RuntimeError, subprocess.SubprocessError, ValueError) as err:
+        except (OSError, RuntimeError, subprocess.SubprocessError, ValueError, json.JSONDecodeError) as err:
             errors.append(f"{backend}: {err}")
 
     raise RuntimeError(" | ".join(errors) if errors else "no telemetry backend available")
@@ -169,15 +212,16 @@ def sample_once():
     error_parts = []
 
     measured_server_watts = None
+    power_is_wall_total = False
     power_source = "fallback"
 
     try:
-        measured_server_watts, rails_watts, power_source = read_power_watts()
+        measured_server_watts, rails_watts, power_source, power_is_wall_total = read_power_watts()
         next_state["measured_server_watts"] = measured_server_watts
         next_state["measured_gpu_watts"] = measured_server_watts
         next_state["power_rails_watts"] = rails_watts
         next_state["power_backend"] = power_source
-    except (OSError, RuntimeError, subprocess.SubprocessError, ValueError) as err:
+    except (OSError, RuntimeError, subprocess.SubprocessError, ValueError, json.JSONDecodeError) as err:
         error_parts.append(f"power: {err}")
 
     try:
@@ -209,27 +253,50 @@ def sample_once():
             current["power_backend"] = next_state["power_backend"]
 
         if measured_server_watts is not None:
-            current["measured_server_watts"] = measured_server_watts
-            current["measured_gpu_watts"] = measured_server_watts
+            if power_is_wall_total:
+                wall_total_watts = measured_server_watts
+                current["measured_server_watts"] = None
+                current["measured_gpu_watts"] = None
+                current["base_system_watts"] = 0.0
 
-            if current["requests_running"] <= 0:
-                if current["idle_gpu_watts"] > 0:
-                    current["idle_gpu_watts"] = (current["idle_gpu_watts"] * 0.8) + (measured_server_watts * 0.2)
+                if current["requests_running"] <= 0:
+                    if current["idle_gpu_watts"] > 0:
+                        current["idle_gpu_watts"] = (current["idle_gpu_watts"] * 0.8) + (wall_total_watts * 0.2)
+                    else:
+                        current["idle_gpu_watts"] = wall_total_watts
+
+                if current["requests_running"] > 0:
+                    current["attributed_gpu_watts"] = wall_total_watts / current["requests_running"]
                 else:
-                    current["idle_gpu_watts"] = measured_server_watts
+                    current["attributed_gpu_watts"] = wall_total_watts
 
-            if current["requests_running"] > 0:
-                current["attributed_gpu_watts"] = measured_server_watts / current["requests_running"]
+                current["estimated_total_watts"] = wall_total_watts
+                current["estimated_total_server_watts"] = wall_total_watts
+                current["cost_share_fraction"] = 1.0
+                current["power_measurement_kind"] = "wall-total"
             else:
-                current["attributed_gpu_watts"] = measured_server_watts
+                current["measured_server_watts"] = measured_server_watts
+                current["measured_gpu_watts"] = measured_server_watts
 
-            # jtop reports board rails; add fixed wall-measured base overhead.
-            current["base_system_watts"] = BASE_SYSTEM_WATTS
-            total_server_watts = (BASE_SYSTEM_WATTS + measured_server_watts) * GPU_COOLING_MULTIPLIER
+                if current["requests_running"] <= 0:
+                    if current["idle_gpu_watts"] > 0:
+                        current["idle_gpu_watts"] = (current["idle_gpu_watts"] * 0.8) + (measured_server_watts * 0.2)
+                    else:
+                        current["idle_gpu_watts"] = measured_server_watts
 
-            current["estimated_total_watts"] = total_server_watts
-            current["estimated_total_server_watts"] = total_server_watts
-            current["cost_share_fraction"] = 1.0
+                if current["requests_running"] > 0:
+                    current["attributed_gpu_watts"] = measured_server_watts / current["requests_running"]
+                else:
+                    current["attributed_gpu_watts"] = measured_server_watts
+
+                # jtop reports board rails; add fixed wall-measured base overhead.
+                current["base_system_watts"] = BASE_SYSTEM_WATTS
+                total_server_watts = (BASE_SYSTEM_WATTS + measured_server_watts) * GPU_COOLING_MULTIPLIER
+
+                current["estimated_total_watts"] = total_server_watts
+                current["estimated_total_server_watts"] = total_server_watts
+                current["cost_share_fraction"] = 1.0
+                current["power_measurement_kind"] = "component-load"
 
         current["is_active"] = current["requests_running"] > 0
         current["timestamp"] = time.time()
