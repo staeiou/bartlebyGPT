@@ -117,7 +117,9 @@ export function createPowerController({ elements, state, getSettings }) {
 
       if (canRenderPowerEquation) {
         const displayBaseWatts = totalWatts - measuredServerWatts;
-        html += `<hr><p><strong>Power:</strong> ${displayBaseWatts.toFixed(2)}W base + ${measuredServerWatts.toFixed(2)}W load = ${totalWatts.toFixed(2)}W</p>`;
+   //     html += `<hr><p><strong>Power:</strong> ${displayBaseWatts.toFixed(2)}W base + ${measuredServerWatts.toFixed(2)}W load = ${totalWatts.toFixed(2)}W</p>`;
+        html += `<hr><p><strong>Power:</strong> ${totalWatts.toFixed(2)}W</p>`;
+
       }
       if (canRenderCostEquation) {
         const rateKwh = Number(costContext.rateKwh);
