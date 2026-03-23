@@ -55,6 +55,7 @@ STATE = {
     "total_output_w": None, "charge_limit_pct": None,
     "hours_remaining": None, "ble_connected": False,
     "source": "solix-ble", "last_error": "", "firmware": None,
+    "charging_status": None,
 }
 
 _SOLIX_DEFAULT = -1
@@ -69,12 +70,13 @@ def _v(val):
 # ---------------------------------------------------------------------------
 
 def update_state(*, soc, temp_c, voltage_mv, solar_w, total_in,
-                 c1_w, c2_w, c3_w, total_out, charge_limit):
+                 c1_w, c2_w, c3_w, total_out, charge_limit, charging_status=None):
     temp_f = round(temp_c * 9 / 5 + 32, 1) if temp_c is not None else None
     hours_remaining = None
     if soc is not None and total_out is not None and total_out > 0:
         hours_remaining = round((soc / 100.0) * CAPACITY_WH / total_out, 2)
     with STATE_LOCK:
+        prev_b6 = STATE.get("charging_status")
         STATE.update({
             "timestamp": time.time(),
             "soc_pct": soc, "temp_c": temp_c, "temp_f": temp_f,
@@ -84,7 +86,11 @@ def update_state(*, soc, temp_c, voltage_mv, solar_w, total_in,
             "total_output_w": total_out, "charge_limit_pct": charge_limit,
             "hours_remaining": hours_remaining,
             "ble_connected": True, "last_error": "",
+            "charging_status": charging_status,
         })
+    if charging_status != prev_b6:
+        log.info("0xb6 charging_status changed: %s -> %s (soc=%s solar_w=%s total_out=%s)",
+                 prev_b6, charging_status, soc, solar_w, total_out)
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +127,7 @@ def on_tlv_notify(sender, data: bytes):
         solar_w=e.get(0xAB), total_in=e.get(0xAC),
         c1_w=e.get(0xA4), c2_w=e.get(0xA5), c3_w=e.get(0xA6),
         total_out=e.get(0xAD), charge_limit=e.get(0xB8),
+        charging_status=e.get(0xB6),
     )
 
 
@@ -327,6 +334,7 @@ class Handler(BaseHTTPRequestHandler):
                     "solix_total_input_w": STATE.get("total_input_w"),
                     "solix_voltage_mv": STATE.get("voltage_mv"),
                     "solix_temp_c": STATE.get("temp_c"),
+                    "solix_charging_status": STATE.get("charging_status"),
                 }, separators=(",", ":")).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
