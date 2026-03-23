@@ -27,6 +27,7 @@ ESPHOME_POWER_URL = os.environ.get("TELEMETRY_ESPHOME_POWER_URL", "").strip()
 ESPHOME_BASE_URL = os.environ.get("TELEMETRY_ESPHOME_BASE_URL", "").strip().rstrip("/")
 ESPHOME_POWER_PATH = os.environ.get("TELEMETRY_ESPHOME_POWER_PATH", "/sensor/power").strip()
 SOLIX_LOG_DIR = os.environ.get("TELEMETRY_SOLIX_LOG_DIR", "/opt/bartleby/solix-monitor/logs").strip()
+VLLM_LOG_DIR = os.environ.get("TELEMETRY_VLLM_LOG_DIR", "").strip()
 HISTORY_CACHE_TTL_SECONDS = max(
     10.0, float(os.environ.get("TELEMETRY_HISTORY_CACHE_TTL_SECONDS", "600"))
 )
@@ -164,6 +165,63 @@ def read_jtop_power_watts():
     raise RuntimeError("jtop power status had no usable rails")
 
 
+def log_vllm_metrics(ts, requests_running, requests_waiting):
+    if not VLLM_LOG_DIR:
+        return
+    date_str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
+    path = os.path.join(VLLM_LOG_DIR, f"vllm-{date_str}.csv")
+    write_header = not os.path.exists(path)
+    try:
+        with open(path, "a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            if write_header:
+                writer.writerow(["timestamp", "requests_running", "requests_waiting"])
+            writer.writerow([
+                datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(),
+                requests_running,
+                requests_waiting,
+            ])
+    except OSError as err:
+        logging.warning("vllm metrics log write failed: %s", err)
+
+
+def read_vllm_rows(now_ts):
+    if not VLLM_LOG_DIR:
+        return []
+    cutoff_ts = now_ts - (HISTORY_LOOKBACK_DAYS * 86400.0)
+    now_date = datetime.fromtimestamp(now_ts, tz=timezone.utc).date()
+    min_date = now_date - timedelta(days=HISTORY_LOOKBACK_DAYS)
+    pattern = os.path.join(VLLM_LOG_DIR, "vllm-*.csv")
+    files = sorted(glob.glob(pattern))
+    dedup = {}
+    for path in files:
+        basename = os.path.basename(path)
+        match = re.match(r"^vllm-(\d{4}-\d{2}-\d{2})\.csv$", basename)
+        if not match:
+            continue
+        try:
+            file_date = datetime.strptime(match.group(1), "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if file_date < min_date:
+            continue
+        try:
+            with open(path, "r", encoding="utf-8", newline="") as handle:
+                reader = csv.DictReader((line.replace("\x00", "") for line in handle))
+                for row in reader:
+                    ts = parse_iso_timestamp(row.get("timestamp"))
+                    if ts is None or ts < cutoff_ts or ts > (now_ts + 60.0):
+                        continue
+                    dedup[ts] = {
+                        "ts": ts,
+                        "running": safe_float(row.get("requests_running"), lo=0.0),
+                        "waiting": safe_float(row.get("requests_waiting"), lo=0.0),
+                    }
+        except OSError:
+            continue
+    return [dedup[key] for key in sorted(dedup.keys())]
+
+
 def parse_metrics(metrics_text):
     running = sum(float(value) for value in RUNNING_RE.findall(metrics_text))
     waiting = sum(float(value) for value in WAITING_RE.findall(metrics_text))
@@ -283,7 +341,7 @@ def read_solix_rows(now_ts):
     return [dedup[key] for key in sorted(dedup.keys())]
 
 
-def build_binned_window(rows, start_ts, end_ts, bin_seconds):
+def build_binned_window(rows, start_ts, end_ts, bin_seconds, vllm_rows=None):
     if end_ts <= start_ts:
         return {
             "window_start_ts": start_ts,
@@ -301,6 +359,8 @@ def build_binned_window(rows, start_ts, end_ts, bin_seconds):
             "count_charge": 0,
             "soc_pct": None,
             "soc_ts": None,
+            "sum_concurrent": 0.0,
+            "count_concurrent": 0,
         }
         for _ in range(bin_count)
     ]
@@ -331,6 +391,20 @@ def build_binned_window(rows, start_ts, end_ts, bin_seconds):
             item["soc_pct"] = soc_pct
             item["soc_ts"] = ts
 
+    for row in (vllm_rows or []):
+        ts = row.get("ts")
+        if ts is None or ts < start_ts or ts > end_ts:
+            continue
+        idx = int((ts - start_ts) // bin_seconds)
+        if idx < 0:
+            continue
+        if idx >= bin_count:
+            idx = bin_count - 1
+        running = row.get("running")
+        if running is not None:
+            bins[idx]["sum_concurrent"] += running
+            bins[idx]["count_concurrent"] += 1
+
     points = []
     carry_soc = None
     for idx, item in enumerate(bins):
@@ -351,6 +425,11 @@ def build_binned_window(rows, start_ts, end_ts, bin_seconds):
         else:
             carry_soc = soc_pct
 
+        concurrent_avg = (
+            round(item["sum_concurrent"] / item["count_concurrent"], 2)
+            if item["count_concurrent"] > 0
+            else None
+        )
         point_ts = min(end_ts, start_ts + ((idx + 1) * bin_seconds))
         points.append(
             {
@@ -359,6 +438,7 @@ def build_binned_window(rows, start_ts, end_ts, bin_seconds):
                 "load_w": load_w,
                 "charge_w": charge_w,
                 "soc_pct": round(soc_pct, 3) if soc_pct is not None else None,
+                "concurrent_avg": concurrent_avg,
             }
         )
 
@@ -373,18 +453,21 @@ def build_binned_window(rows, start_ts, end_ts, bin_seconds):
 def compute_history_payload(now_ts=None):
     now_ts = float(now_ts if now_ts is not None else time.time())
     rows = read_solix_rows(now_ts)
+    vllm_rows = read_vllm_rows(now_ts)
 
     window_24h = build_binned_window(
         rows=rows,
         start_ts=now_ts - 86400.0,
         end_ts=now_ts,
         bin_seconds=HISTORY_24H_BIN_SECONDS,
+        vllm_rows=vllm_rows,
     )
     window_7d = build_binned_window(
         rows=rows,
         start_ts=now_ts - (HISTORY_LOOKBACK_DAYS * 86400.0),
         end_ts=now_ts,
         bin_seconds=HISTORY_7D_BIN_SECONDS,
+        vllm_rows=vllm_rows,
     )
 
     return {
@@ -491,6 +574,7 @@ def sample_once():
         requests_running, requests_waiting = parse_metrics(metrics_text)
         next_state["requests_running"] = requests_running
         next_state["requests_waiting"] = requests_waiting
+        log_vllm_metrics(time.time(), requests_running, requests_waiting)
     except (URLError, TimeoutError, ValueError) as err:
         error_parts.append(f"/metrics: {err}")
 
