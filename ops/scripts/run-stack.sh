@@ -130,6 +130,7 @@ TELEMETRY_ESPHOME_POWER_URL="${TELEMETRY_ESPHOME_POWER_URL:-}"
 TELEMETRY_ESPHOME_BASE_URL="${TELEMETRY_ESPHOME_BASE_URL:-}"
 TELEMETRY_ESPHOME_POWER_PATH="${TELEMETRY_ESPHOME_POWER_PATH:-/sensor/power}"
 TELEMETRY_HISTORY_24H_BIN_SECONDS="${TELEMETRY_HISTORY_24H_BIN_SECONDS:-300}"
+TELEMETRY_VLLM_LOG_DIR="${TELEMETRY_VLLM_LOG_DIR:-}"
 
 VLLM_API_KEY="${VLLM_API_KEY:-}"
 VLLM_EXTRA_ARGS="${VLLM_EXTRA_ARGS:-${DEFAULT_VLLM_EXTRA_ARGS}}"
@@ -382,9 +383,8 @@ EOF
   "${SUDO[@]}" touch "${NGINX_ACCESS_LOG}" "${NGINX_ERROR_LOG}"
 
   "${SUDO[@]}" tee "${NGINX_CONF_PATH}" >/dev/null <<EOF
-map \$http_cf_connecting_ip \$client_limit_key {
-    default \$http_cf_connecting_ip;
-    ""      \$remote_addr;
+map \$remote_addr \$client_limit_key {
+    default \$remote_addr;
 }
 
 map \$http_origin \$bartleby_cors_origin {
@@ -392,6 +392,34 @@ map \$http_origin \$bartleby_cors_origin {
     "~^https://([a-z0-9-]+\.)?auditomatic\.org$"       \$http_origin;
     "~^https://([a-z0-9-]+\.)?bartlebygpt\.org$"       \$http_origin;
 }
+
+# Trust Cloudflare's connecting IP only when request source is Cloudflare.
+real_ip_header CF-Connecting-IP;
+real_ip_recursive on;
+set_real_ip_from 127.0.0.1;
+set_real_ip_from ::1;
+set_real_ip_from 173.245.48.0/20;
+set_real_ip_from 103.21.244.0/22;
+set_real_ip_from 103.22.200.0/22;
+set_real_ip_from 103.31.4.0/22;
+set_real_ip_from 141.101.64.0/18;
+set_real_ip_from 108.162.192.0/18;
+set_real_ip_from 190.93.240.0/20;
+set_real_ip_from 188.114.96.0/20;
+set_real_ip_from 197.234.240.0/22;
+set_real_ip_from 198.41.128.0/17;
+set_real_ip_from 162.158.0.0/15;
+set_real_ip_from 104.16.0.0/13;
+set_real_ip_from 104.24.0.0/14;
+set_real_ip_from 172.64.0.0/13;
+set_real_ip_from 131.0.72.0/22;
+set_real_ip_from 2400:cb00::/32;
+set_real_ip_from 2606:4700::/32;
+set_real_ip_from 2803:f800::/32;
+set_real_ip_from 2405:b500::/32;
+set_real_ip_from 2405:8100::/32;
+set_real_ip_from 2a06:98c0::/29;
+set_real_ip_from 2c0f:f248::/32;
 
 # Per-IP limits (abuse protection):
 limit_req_zone  \$client_limit_key zone=perip_rate:10m rate=${RATE_LIMIT};
@@ -425,6 +453,13 @@ server {
     add_header Access-Control-Allow-Headers "${NGINX_CORS_ALLOW_HEADERS}" always;
     ${cors_credentials_line}
 
+    # Drop common scanner/probe paths instead of serving SPA fallback.
+    location = /xmlrpc.php { return 444; }
+    location ~* ^/(wp-admin|wp-login\.php|wordpress)(/|$) { return 404; }
+    location ~* ^/(phpmyadmin|pma)(/|$) { return 404; }
+    location ~ /\.(?!well-known(?:/|$)) { return 404; }
+    location ~* \.(?:php|asp|aspx|jsp|cgi|pl|sh|env|ini|sql|bak|old|orig|swp|log|yaml|yml)$ { return 404; }
+
     location = /health {
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
@@ -443,6 +478,32 @@ server {
     }
 
     location = /metrics {
+        # Cloudflare/local-origin only.
+        allow 127.0.0.1;
+        allow ::1;
+        allow 173.245.48.0/20;
+        allow 103.21.244.0/22;
+        allow 103.22.200.0/22;
+        allow 103.31.4.0/22;
+        allow 141.101.64.0/18;
+        allow 108.162.192.0/18;
+        allow 190.93.240.0/20;
+        allow 188.114.96.0/20;
+        allow 197.234.240.0/22;
+        allow 198.41.128.0/17;
+        allow 162.158.0.0/15;
+        allow 104.16.0.0/13;
+        allow 104.24.0.0/14;
+        allow 172.64.0.0/13;
+        allow 131.0.72.0/22;
+        allow 2400:cb00::/32;
+        allow 2606:4700::/32;
+        allow 2803:f800::/32;
+        allow 2405:b500::/32;
+        allow 2405:8100::/32;
+        allow 2a06:98c0::/29;
+        allow 2c0f:f248::/32;
+        deny all;
         limit_req  zone=perip_rate burst=5 nodelay;
         limit_conn perip_conn ${CONNECTION_LIMIT};
         proxy_http_version 1.1;
@@ -462,6 +523,32 @@ server {
     }
 
     location = /load {
+        # Cloudflare/local-origin only.
+        allow 127.0.0.1;
+        allow ::1;
+        allow 173.245.48.0/20;
+        allow 103.21.244.0/22;
+        allow 103.22.200.0/22;
+        allow 103.31.4.0/22;
+        allow 141.101.64.0/18;
+        allow 108.162.192.0/18;
+        allow 190.93.240.0/20;
+        allow 188.114.96.0/20;
+        allow 197.234.240.0/22;
+        allow 198.41.128.0/17;
+        allow 162.158.0.0/15;
+        allow 104.16.0.0/13;
+        allow 104.24.0.0/14;
+        allow 172.64.0.0/13;
+        allow 131.0.72.0/22;
+        allow 2400:cb00::/32;
+        allow 2606:4700::/32;
+        allow 2803:f800::/32;
+        allow 2405:b500::/32;
+        allow 2405:8100::/32;
+        allow 2a06:98c0::/29;
+        allow 2c0f:f248::/32;
+        deny all;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$client_limit_key;
@@ -767,6 +854,9 @@ start_llama_server() {
 start_telemetry() {
   "${SUDO[@]}" mkdir -p "$(dirname "${TELEMETRY_LOG}")"
   "${SUDO[@]}" touch "${TELEMETRY_LOG}"
+  if [[ -n "${TELEMETRY_VLLM_LOG_DIR:-}" ]]; then
+    "${SUDO[@]}" mkdir -p "${TELEMETRY_VLLM_LOG_DIR}"
+  fi
 
   if [[ ! -f "${TELEMETRY_SCRIPT}" ]]; then
     echo "Telemetry script not found: ${TELEMETRY_SCRIPT}" >&2
@@ -786,6 +876,7 @@ start_telemetry() {
     "TELEMETRY_ESPHOME_POWER_PATH=${TELEMETRY_ESPHOME_POWER_PATH}"
     "TELEMETRY_VLLM_BASE_URL=http://${VLLM_HOST}:${VLLM_PORT}"
     "TELEMETRY_HISTORY_24H_BIN_SECONDS=${TELEMETRY_HISTORY_24H_BIN_SECONDS}"
+    "TELEMETRY_VLLM_LOG_DIR=${TELEMETRY_VLLM_LOG_DIR:-}"
   )
 
   echo "Starting power telemetry server on ${TELEMETRY_HOST}:${TELEMETRY_PORT}"
