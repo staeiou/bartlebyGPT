@@ -152,7 +152,7 @@ export function createPowerController({ elements, state, getSettings }) {
         loadW: toFiniteNumber(point && point.load_w),
         chargeW: toFiniteNumber(point && point.charge_w),
         socPct: toFiniteNumber(point && point.soc_pct),
-        concurrentAvg: toFiniteNumber(point && point.concurrent_avg),
+        requestsCount: toFiniteNumber(point && point.requests_count),
       }))
       .filter((point) => point.ts !== null)
       .sort((a, b) => a.ts - b.ts);
@@ -204,7 +204,7 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
       load: points.map((point) => [point.ts * 1000, point.loadW]),
       charge: points.map((point) => [point.ts * 1000, point.chargeW]),
       soc: points.map((point) => [point.ts * 1000, point.socPct]),
-      concurrent: points.map((point) => [point.ts * 1000, point.concurrentAvg]),
+      requests: points.map((point) => [point.ts * 1000, point.requestsCount]),
     };
   }
 
@@ -352,14 +352,11 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
           data: series.soc,
         },
         {
-          name: "Concurrent",
-          type: "line",
+          name: "Requests",
+          type: "bar",
           yAxisIndex: 2,
-          showSymbol: false,
-          connectNulls: false,
-          lineStyle: { width: lineWidth, color: "#4a6fa5" },
-          itemStyle: { color: "#4a6fa5" },
-          data: series.concurrent,
+          itemStyle: { color: "rgba(74,111,165,0.55)" },
+          data: series.requests,
         },
       ],
     };
@@ -466,7 +463,7 @@ ${statusLine ? `<p class="power-history-status">${escapeHtml(statusLine)}</p>` :
 <span><i class="power-history-key is-load"></i>Load</span>
 <span><i class="power-history-key is-charge"></i>Charge</span>
 <span><i class="power-history-key is-soc"></i>State of Charge</span>
-<span><i class="power-history-key is-concurrent"></i>Concurrent</span>
+<span><i class="power-history-key is-concurrent"></i>Requests</span>
 </p>
 <div class="power-history-grid">
 ${charts}

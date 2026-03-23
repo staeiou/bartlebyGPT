@@ -55,6 +55,7 @@ CLAMP_MAX_WATTS = float(os.environ.get("TELEMETRY_CLAMP_MAX_WATTS", "0"))  # 0 =
 
 RUNNING_RE = re.compile(r"^vllm:num_requests_running\{.*\}\s+([0-9.eE+-]+)$", re.MULTILINE)
 WAITING_RE = re.compile(r"^vllm:num_requests_waiting\{.*\}\s+([0-9.eE+-]+)$", re.MULTILINE)
+SUCCESS_RE = re.compile(r"^vllm:request_success_total\{.*\}\s+([0-9.eE+-]+)$", re.MULTILINE)
 
 STATE_LOCK = threading.Lock()
 STATE = {
@@ -69,6 +70,8 @@ STATE = {
     "cost_share_fraction": 1.0,
     "requests_running": 0,
     "requests_waiting": 0,
+    "request_success_total": 0,
+    "requests_completed_interval": 0,
     "server_load": None,
     "is_active": False,
     "source": "fallback",
@@ -165,7 +168,7 @@ def read_jtop_power_watts():
     raise RuntimeError("jtop power status had no usable rails")
 
 
-def log_vllm_metrics(ts, requests_running, requests_waiting):
+def log_vllm_metrics(ts, requests_running, requests_waiting, requests_completed):
     if not VLLM_LOG_DIR:
         return
     date_str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
@@ -175,11 +178,12 @@ def log_vllm_metrics(ts, requests_running, requests_waiting):
         with open(path, "a", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             if write_header:
-                writer.writerow(["timestamp", "requests_running", "requests_waiting"])
+                writer.writerow(["timestamp", "requests_running", "requests_waiting", "requests_completed"])
             writer.writerow([
                 datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(),
                 requests_running,
                 requests_waiting,
+                requests_completed,
             ])
     except OSError as err:
         logging.warning("vllm metrics log write failed: %s", err)
@@ -216,6 +220,7 @@ def read_vllm_rows(now_ts):
                         "ts": ts,
                         "running": safe_float(row.get("requests_running"), lo=0.0),
                         "waiting": safe_float(row.get("requests_waiting"), lo=0.0),
+                        "completed": safe_float(row.get("requests_completed"), lo=0.0),
                     }
         except OSError:
             continue
@@ -225,7 +230,8 @@ def read_vllm_rows(now_ts):
 def parse_metrics(metrics_text):
     running = sum(float(value) for value in RUNNING_RE.findall(metrics_text))
     waiting = sum(float(value) for value in WAITING_RE.findall(metrics_text))
-    return int(round(running)), int(round(waiting))
+    total_success = sum(float(value) for value in SUCCESS_RE.findall(metrics_text))
+    return int(round(running)), int(round(waiting)), int(round(total_success))
 
 
 def resolve_esphome_power_url():
@@ -359,8 +365,7 @@ def build_binned_window(rows, start_ts, end_ts, bin_seconds, vllm_rows=None):
             "count_charge": 0,
             "soc_pct": None,
             "soc_ts": None,
-            "sum_concurrent": 0.0,
-            "count_concurrent": 0,
+            "sum_completed": 0.0,
         }
         for _ in range(bin_count)
     ]
@@ -400,10 +405,9 @@ def build_binned_window(rows, start_ts, end_ts, bin_seconds, vllm_rows=None):
             continue
         if idx >= bin_count:
             idx = bin_count - 1
-        running = row.get("running")
-        if running is not None:
-            bins[idx]["sum_concurrent"] += running
-            bins[idx]["count_concurrent"] += 1
+        completed = row.get("completed")
+        if completed is not None:
+            bins[idx]["sum_completed"] += completed
 
     points = []
     carry_soc = None
@@ -425,11 +429,7 @@ def build_binned_window(rows, start_ts, end_ts, bin_seconds, vllm_rows=None):
         else:
             carry_soc = soc_pct
 
-        concurrent_avg = (
-            round(item["sum_concurrent"] / item["count_concurrent"], 2)
-            if item["count_concurrent"] > 0
-            else None
-        )
+        requests_count = int(round(item["sum_completed"])) if item["sum_completed"] > 0 else None
         point_ts = min(end_ts, start_ts + ((idx + 1) * bin_seconds))
         points.append(
             {
@@ -438,7 +438,7 @@ def build_binned_window(rows, start_ts, end_ts, bin_seconds, vllm_rows=None):
                 "load_w": load_w,
                 "charge_w": charge_w,
                 "soc_pct": round(soc_pct, 3) if soc_pct is not None else None,
-                "concurrent_avg": concurrent_avg,
+                "requests_count": requests_count,
             }
         )
 
@@ -571,10 +571,10 @@ def sample_once():
 
     try:
         metrics_text = fetch_text(f"{VLLM_BASE_URL}/metrics")
-        requests_running, requests_waiting = parse_metrics(metrics_text)
+        requests_running, requests_waiting, total_success = parse_metrics(metrics_text)
         next_state["requests_running"] = requests_running
         next_state["requests_waiting"] = requests_waiting
-        log_vllm_metrics(time.time(), requests_running, requests_waiting)
+        next_state["request_success_total"] = total_success
     except (URLError, TimeoutError, ValueError) as err:
         error_parts.append(f"/metrics: {err}")
 
@@ -587,6 +587,13 @@ def sample_once():
             current["requests_running"] = next_state["requests_running"]
         if "requests_waiting" in next_state:
             current["requests_waiting"] = next_state["requests_waiting"]
+        if "request_success_total" in next_state:
+            new_total = next_state["request_success_total"]
+            last_total = current.get("request_success_total") or 0
+            delta = max(0, new_total - last_total) if new_total >= last_total else 0
+            current["requests_completed_interval"] = delta
+            current["request_success_total"] = new_total
+            log_vllm_metrics(time.time(), current["requests_running"], current["requests_waiting"], delta)
         if "power_rails_watts" in next_state:
             current["power_rails_watts"] = next_state["power_rails_watts"]
         if "power_backend" in next_state:

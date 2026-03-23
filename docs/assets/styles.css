@@ -162,6 +162,7 @@ input[type="range"]::-moz-range-thumb {
   font-style: italic;
   color: var(--muted);
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .power-display .power-label {
