@@ -407,6 +407,10 @@ body:has(.messages:not(.is-welcome)) .battery-badge svg {
   background: #4a6fa5;
 }
 
+.power-history-key.is-queued {
+  background: #1e3c78;
+}
+
 .power-history-grid {
   display: grid;
   grid-template-columns: 1fr;

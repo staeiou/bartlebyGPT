@@ -147,13 +147,25 @@ export function createPowerController({ elements, state, getSettings }) {
   function normalizeHistoryPoints(windowPayload) {
     const source = windowPayload && Array.isArray(windowPayload.points) ? windowPayload.points : [];
     return source
-      .map((point) => ({
-        ts: toFiniteNumber(point && point.ts),
-        loadW: toFiniteNumber(point && point.load_w),
-        chargeW: toFiniteNumber(point && point.charge_w),
-        socPct: toFiniteNumber(point && point.soc_pct),
-        requestsCount: toFiniteNumber(point && point.requests_count),
-      }))
+      .map((point) => {
+        const ts = toFiniteNumber(point && point.ts);
+        const loadW = toFiniteNumber(point && point.load_w);
+        const socPct = toFiniteNumber(point && point.soc_pct);
+        let chargeW = toFiniteNumber(point && point.charge_w);
+        // At 100% SOC the Solix reports 0W input (charge controller off) but solar
+        // is still powering the load via pass-through — treat charge as equal to load.
+        if (socPct !== null && socPct >= 100 && chargeW === 0 && loadW !== null) {
+          chargeW = loadW;
+        }
+        return {
+          ts,
+          loadW,
+          chargeW,
+          socPct,
+          avgConcurrent: toFiniteNumber(point && point.avg_concurrent),
+          avgWaiting: toFiniteNumber(point && point.avg_waiting),
+        };
+      })
       .filter((point) => point.ts !== null)
       .sort((a, b) => a.ts - b.ts);
   }
@@ -204,7 +216,8 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
       load: points.map((point) => [point.ts * 1000, point.loadW]),
       charge: points.map((point) => [point.ts * 1000, point.chargeW]),
       soc: points.map((point) => [point.ts * 1000, point.socPct]),
-      requests: points.map((point) => [point.ts * 1000, point.requestsCount]),
+      requests: points.map((point) => [point.ts * 1000, point.avgConcurrent]),
+      waiting: points.map((point) => [point.ts * 1000, point.avgWaiting]),
     };
   }
 
@@ -212,6 +225,15 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
     const series = historyPointsToSeries(points);
     const is24h = mode === "24h";
     const lineWidth = 1.2;
+    const isNarrow = window.innerWidth < 540;
+    const gridLR = isNarrow ? 52 : 104;
+    const yFontSize = isNarrow ? 13 : 21;
+    const yNameGap = isNarrow ? 38 : 72;
+    const xFontSize = isNarrow ? 11 : 14;
+    const legendFontSize = isNarrow ? 13 : 18;
+    const xMinInterval = isNarrow
+      ? (is24h ? 4 * 3600 * 1000 : 2 * 86400 * 1000)
+      : undefined;
     return {
       animation: false,
       backgroundColor: "transparent",
@@ -229,34 +251,43 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
         itemWidth: 32,
         itemHeight: 4,
         textStyle: {
-          fontFamily: "EB Garamond, Georgia, serif",
-          fontSize: 18,
+          fontFamily: "system-ui, -apple-system, sans-serif",
+          fontSize: legendFontSize,
+          fontWeight: 700,
           color: "rgba(36,32,26,0.84)",
         },
       },
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "cross" },
-        valueFormatter(value) {
-          if (value === null || value === undefined || Number.isNaN(Number(value))) return "--";
-          return String(Math.round(Number(value)));
+        formatter(params) {
+          const units = { "Load": "W", "Charge": "W", "State of Charge": "%", "Avg Concurrent": " chats", "Queued": " chats" };
+          const header = params[0] ? `<strong>${params[0].axisValueLabel}</strong><br>` : "";
+          const rows = params.map((p) => {
+            const raw = p.value && p.value[1];
+            const val = (raw === null || raw === undefined || Number.isNaN(Number(raw))) ? "--" : `${Math.round(Number(raw))}${units[p.seriesName] ?? ""}`;
+            return `${p.marker}${p.seriesName}: ${val}`;
+          });
+          return header + rows.join("<br>");
         },
       },
       grid: {
         top: 58,
-        left: 104,
-        right: 104,
+        left: gridLR,
+        right: gridLR,
         bottom: 76,
       },
       xAxis: {
         type: "time",
+        ...(xMinInterval !== undefined ? { minInterval: xMinInterval } : {}),
         axisLine: { lineStyle: { color: "rgba(24,20,16,0.42)", width: 1.2 } },
         axisTick: { show: true },
         axisLabel: {
-          fontFamily: "EB Garamond, Georgia, serif",
-          fontSize: 14,
+          fontFamily: "system-ui, -apple-system, sans-serif",
+          fontSize: xFontSize,
           fontWeight: 700,
           color: "rgba(36,32,26,0.74)",
+          rotate: isNarrow ? 45 : 0,
           formatter(value) {
             return formatXAxisLabelForMode(value, mode);
           },
@@ -268,20 +299,20 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
           type: "value",
           name: "Watts",
           nameLocation: "middle",
-          nameGap: 72,
+          nameGap: yNameGap,
           min: 0,
           axisLine: { show: true, lineStyle: { color: "rgba(24,20,16,0.42)", width: 1.2 } },
           axisTick: { show: true },
           axisLabel: {
             formatter: "{value}W",
-            fontFamily: "EB Garamond, Georgia, serif",
-            fontSize: 21,
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            fontSize: yFontSize,
             fontWeight: 700,
             color: "rgba(36,32,26,0.74)",
           },
           nameTextStyle: {
-            fontFamily: "EB Garamond, Georgia, serif",
-            fontSize: 21,
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            fontSize: yFontSize,
             fontWeight: 700,
             color: "rgba(36,32,26,0.68)",
           },
@@ -291,21 +322,21 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
           type: "value",
           name: "State of Charge",
           nameLocation: "middle",
-          nameGap: 72,
+          nameGap: yNameGap,
           min: 0,
           max: 100,
           axisLine: { show: true, lineStyle: { color: "rgba(24,20,16,0.42)", width: 1.2 } },
           axisTick: { show: true },
           axisLabel: {
             formatter: "{value}%",
-            fontFamily: "EB Garamond, Georgia, serif",
-            fontSize: 21,
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            fontSize: yFontSize,
             fontWeight: 700,
             color: "rgba(36,32,26,0.74)",
           },
           nameTextStyle: {
-            fontFamily: "EB Garamond, Georgia, serif",
-            fontSize: 21,
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            fontSize: yFontSize,
             fontWeight: 700,
             color: "rgba(36,32,26,0.68)",
           },
@@ -352,11 +383,23 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
           data: series.soc,
         },
         {
-          name: "Requests",
-          type: "bar",
+          name: "Avg Concurrent",
+          type: "line",
           yAxisIndex: 2,
-          itemStyle: { color: "rgba(74,111,165,0.55)" },
+          showSymbol: false,
+          connectNulls: true,
+          lineStyle: { width: 1, color: "rgba(74,111,165,0.45)" },
+          areaStyle: { color: "rgba(74,111,165,0.15)" },
           data: series.requests,
+        },
+        {
+          name: "Queued",
+          type: "line",
+          yAxisIndex: 2,
+          showSymbol: false,
+          connectNulls: true,
+          lineStyle: { width: 1.5, color: "rgba(30,60,120,0.75)" },
+          data: series.waiting,
         },
       ],
     };
@@ -392,7 +435,7 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
 
       if (!chart || chart.getDom() !== node) {
         if (chart) chart.dispose();
-        chart = echartsLib.init(node, null, { renderer: "canvas" });
+        chart = echartsLib.init(node, null, { renderer: "canvas", devicePixelRatio: window.devicePixelRatio || 1 });
         historyChartInstances[key] = chart;
         historyChartOptionKeys[key] = "";
       }
@@ -463,7 +506,8 @@ ${statusLine ? `<p class="power-history-status">${escapeHtml(statusLine)}</p>` :
 <span><i class="power-history-key is-load"></i>Load</span>
 <span><i class="power-history-key is-charge"></i>Charge</span>
 <span><i class="power-history-key is-soc"></i>State of Charge</span>
-<span><i class="power-history-key is-concurrent"></i>Requests</span>
+<span><i class="power-history-key is-concurrent"></i>Avg Concurrent</span>
+<span><i class="power-history-key is-queued"></i>Queued</span>
 </p>
 <div class="power-history-grid">
 ${charts}
@@ -542,28 +586,32 @@ ${charts}
       }
 
       if (isSolixProfile(resolution)) {
-        const solarW = Number.parseFloat(String(payload.solix_solar_input_w));
+        const effectiveSolarW = Number.parseFloat(String(payload.solix_effective_solar_w ?? payload.solix_solar_input_w));
         const soc = Number.parseFloat(String(payload.solix_soc_pct));
-        const hasSolar = Number.isFinite(solarW);
+        const hasSolar = Number.isFinite(effectiveSolarW);
         const hasSoc = Number.isFinite(soc);
         const hasDraw = Number.isFinite(totalWatts);
-        if (hasSolar && hasSoc && hasDraw) {
+        if (hasSoc && hasDraw) {
           const CAPACITY_WH = 288;
-          const netW = totalWatts - solarW;
-          if (Math.abs(netW) < 0.5) {
-            html += `<p><strong>Battery:</strong> maintaining charge at ${soc.toFixed(0)}%</p>`;
-          } else if (netW > 0) {
-            const storedWh = (soc / 100) * CAPACITY_WH;
-            const hrs = storedWh / netW;
-            const hh = Math.floor(hrs);
-            const mm = Math.round((hrs - hh) * 60);
-            html += `<p><strong>Battery:</strong> ${soc.toFixed(0)}% — draws ${Math.round(netW)}W net (${Math.round(totalWatts)}W − ${Math.round(solarW)}W solar) → ~${hh}h ${mm}m remaining</p>`;
-          } else {
-            const emptyWh = ((100 - soc) / 100) * CAPACITY_WH;
-            const hrs = emptyWh / (-netW);
-            const hh = Math.floor(hrs);
-            const mm = Math.round((hrs - hh) * 60);
-            html += `<p><strong>Battery:</strong> ${soc.toFixed(0)}% — surplus ${Math.round(-netW)}W (${Math.round(solarW)}W solar − ${Math.round(totalWatts)}W draw) → ~${hh}h ${mm}m to full</p>`;
+          if (soc >= 100) {
+            html += `<p><strong>Battery:</strong> Full — solar powered (${Math.round(totalWatts)}W load)</p>`;
+          } else if (hasSolar) {
+            const netW = totalWatts - effectiveSolarW;
+            if (Math.abs(netW) < 0.5) {
+              html += `<p><strong>Battery:</strong> maintaining charge at ${soc.toFixed(0)}%</p>`;
+            } else if (netW > 0) {
+              const storedWh = (soc / 100) * CAPACITY_WH;
+              const hrs = storedWh / netW;
+              const hh = Math.floor(hrs);
+              const mm = Math.round((hrs - hh) * 60);
+              html += `<p><strong>Battery:</strong> ${soc.toFixed(0)}% — draws ${Math.round(netW)}W net (${Math.round(totalWatts)}W − ${Math.round(effectiveSolarW)}W solar) → ~${hh}h ${mm}m remaining</p>`;
+            } else {
+              const emptyWh = ((100 - soc) / 100) * CAPACITY_WH;
+              const hrs = emptyWh / (-netW);
+              const hh = Math.floor(hrs);
+              const mm = Math.round((hrs - hh) * 60);
+              html += `<p><strong>Battery:</strong> ${soc.toFixed(0)}% — surplus ${Math.round(-netW)}W (${Math.round(effectiveSolarW)}W solar − ${Math.round(totalWatts)}W draw) → ~${hh}h ${mm}m to full</p>`;
+            }
           }
         }
       }
@@ -864,7 +912,7 @@ ${charts}
     elements.powerWatts.textContent = formatWattsDisplay(displayWatts);
     elements.wattsLiveDot.hidden = !payload.watts_is_live;
     if (profileId === "pi-rpi4" || profileId === "eco-orin") {
-      const solarW = payload.solix_solar_input_w;
+      const solarW = payload.solix_effective_solar_w ?? payload.solix_solar_input_w;
       const soc = payload.solix_soc_pct;
       elements.powerCo2.textContent = Number.isFinite(Number(solarW)) && solarW !== null ? `Solar: ${solarW}W in` : "Solar: -- W";
       elements.powerCost.textContent = Number.isFinite(Number(soc)) && soc !== null ? `${soc}% battery` : "--% battery";
@@ -1151,12 +1199,7 @@ ${charts}
 
   function openPowerModal() {
     elements.powerModalBackdrop.classList.add("is-open");
-    const stale =
-      !state.powerHistoryLastFetchedAt ||
-      (Date.now() - state.powerHistoryLastFetchedAt) > POWER_HISTORY_REFRESH_MS;
-    if (stale) {
-      void refreshPowerHistory();
-    }
+    void refreshPowerHistory();
     updatePowerDisplay(state.busy);
     scheduleHistoryChartResize();
     void loadEcharts().then(() => {
