@@ -1,0 +1,25 @@
+[Unit]
+Description=Anker Solix C300X DC BLE Monitor
+After=bluetooth.target network.target
+Wants=bluetooth.target
+
+[Service]
+Type=simple
+User={{SOLIX_MONITOR_USER}}
+WorkingDirectory={{SOLIX_MONITOR_WORKDIR}}
+ExecStart={{SOLIX_MONITOR_PYTHON}} {{SOLIX_MONITOR_SCRIPT}}
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+Environment=SOLIX_BLE_ADDR={{SOLIX_BLE_ADDR}}
+Environment=SOLIX_HOST={{SOLIX_HOST}}
+Environment=SOLIX_PORT={{SOLIX_PORT}}
+Environment=SOLIX_CSV_DIR={{SOLIX_CSV_DIR}}
+Environment=SOLIX_CSV_INTERVAL={{SOLIX_CSV_INTERVAL}}
+Environment=SOLIX_CAPACITY_WH={{SOLIX_CAPACITY_WH}}
+Environment=SOLIX_RECONNECT_DELAY={{SOLIX_RECONNECT_DELAY}}
+
+[Install]
+WantedBy=multi-user.target

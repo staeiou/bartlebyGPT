@@ -1,0 +1,4 @@
+HANDOFF_*.md
+ops/config/modules-load.d/
+*.secrets.env
+*secrets*.env
