@@ -4,7 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>BartlebyGPT</title>
-  <link rel="stylesheet" href="./assets/styles.css">
+  <script>
+    (function () {
+      var v = Date.now().toString(36);
+      window.__assetVersion = v;
+      var link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "./assets/styles.css?v=" + encodeURIComponent(v);
+      document.head.appendChild(link);
+    })();
+  </script>
+  <noscript><link rel="stylesheet" href="./assets/styles.css"></noscript>
   <script>
     window.goatcounter = window.goatcounter || {};
     Object.assign(window.goatcounter, {
@@ -17,20 +27,21 @@
     data-goatcounter="https://bartleby-vast.goatcounter.com/count"
     async
     src="https://gc.zgo.at/count.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js" defer></script>
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
       <div class="brand">
         <button id="reset-chat-button" class="brand-copy" type="button" aria-label="Start a new chat">
-          <h1>&nbsp; BartlebyGPT</h1>
+          <h1>&nbsp; BartlebyGPT <span class="brand-solar">Solar</span></h1>
         </button>
         <div id="status-pill" class="status-pill">Idle</div>
       </div>
       <span id="active-count-header" class="active-count-header"></span>
       <div id="power-display" class="power-display">
         <span class="power-label">&nbsp; is<span class="power-currently"> currently</span> costing ~</span>
-        <span class="power-val" id="power-watts">&#8212; Watts</span>
+        <span class="power-val" id="power-watts">&#8212; Watts</span><span id="watts-live-dot" class="watts-live-dot" hidden title="Live measurement"></span>
         <span class="power-sep">&middot;</span>
         <span class="power-val" id="power-co2">&#8212; gCO&#8322;/hr</span>
         <span class="power-sep">&middot;</span>
@@ -110,7 +121,9 @@
             <label>
               POWER_PROFILE
               <select id="power-profile">
+                <option value="auto-live">Auto (Live Telemetry)</option>
                 <option value="home-sd">Home (San Diego, Quadro RTX 4000)</option>
+                <option value="eco-orin">Base (Jetson Orin Nano Super 8GB)</option>
                 <option value="spokane-dc">TierPoint (Spokane, WA data center)</option>
               </select>
             </label>
@@ -143,6 +156,12 @@
             <label>
               COST_PER_KWH ($)
               <input id="cost-per-kwh" type="number" min="0" step="0.01">
+            </label>
+          </div>
+          <div class="field">
+            <label>
+              COLOR_WARMTH
+              <input id="color-warmth" type="range" min="0" max="1" step="0.01" value="0.5">
             </label>
           </div>
         </div>
@@ -186,6 +205,15 @@
 
   <p id="mobile-hallucination" class="mobile-hallucination">A <a href="https://stuartgeiger.com" target="_blank" rel="noreferrer">Stuart Geiger</a> Hallucination</p>
 
+  <div id="battery-badge" class="battery-badge" hidden>
+    <svg id="battery-badge-battery-svg" viewBox="0 0 28 56" aria-hidden="true" fill="currentColor">
+      <rect x="8" y="0" width="12" height="5" rx="1.5" opacity="0.7"/>
+      <rect x="1" y="5" width="26" height="50" rx="2.5" stroke="currentColor" stroke-width="2" fill="none"/>
+      <rect id="battery-badge-fill" x="3.5" y="53" width="21" height="0" rx="1.5" opacity="0.65"/>
+    </svg>
+    <span id="battery-badge-pct"></span>
+  </div>
+
   <div class="power-modal-backdrop" id="power-modal-backdrop">
     <div class="power-modal" role="dialog" aria-modal="true">
       <button class="power-modal-close" id="power-modal-close" aria-label="Close">&times;</button>
@@ -194,6 +222,15 @@
     </div>
   </div>
 
-  <script type="module" src="./app/main.js"></script>
+  <script>
+    (function () {
+      var v = window.__assetVersion || Date.now().toString(36);
+      var script = document.createElement("script");
+      script.type = "module";
+      script.src = "./app/main.js?v=" + encodeURIComponent(v);
+      document.body.appendChild(script);
+    })();
+  </script>
+  <noscript><script type="module" src="./app/main.js"></script></noscript>
 </body>
 </html>

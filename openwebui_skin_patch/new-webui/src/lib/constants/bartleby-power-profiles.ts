@@ -22,18 +22,7 @@ export const defaults = {
         gco2PerWh: 0.200,
         costPerHr: 0.09,
         costPerKwh: 0.55,
-        colorWarmth: 0.5,
       };
-
-const LEGACY_ECO_ORIN_LABEL = "Eco (Jetson Orin Nano Super 8GB)";
-const LEGACY_ECO_ORIN_MODAL_HTML = [
-  `<p>BartlebyGPT is a satire, but the cost data is genuine.</p>`,
-  `<p>These figures reflect the live power consumption of BartlebyGPT's eco deployment, which runs in a residential home in San Diego, CA on a Jetson Orin Nano Super 8GB. The machine pulls roughly <strong>~6–7W</strong> at idle and scales up to about <strong>~21W</strong> at full load while serving a low-power inference stack.</p>`,
-  `<p><strong>Watts</strong> is the estimated total draw for all current BartlebyGPT users combined. For this deployment, we use live power telemetry from an Anker Solix C300X DC battery via BLE, so reported watts reflect total system draw directly. A small air conditioner window unit or TV with sound system pulls 400-600W, a fan pulls 50-75W, a MacBook Air streaming video pulls 20-30W, and an LED/CFL lightbulb pulls 10-15W.</p>`,
-  `<p><strong>gCO₂/hr</strong> is the estimated carbon cost of that total estimated power draw: watts × grid carbon intensity. San Diego is served by <a href="https://sdcommunitypower.org/wp-content/uploads/2025/11/Community-Power-2024-Power-Content-Label.pdf">San Diego Community Power</a> cleaner energy program via SDG&amp;E, which has a ~53% renewables mix. This has an estimated emissions factor of ~0.200 gCO₂/Wh, though this varies with the grid mix and time of day. This does not include emissions from training and fine-tuning the model, manufacturing the hardware, disposing of end-of-life hardware, networking between your device and the server, or other inputs and externalities.</p>`,
-  `<p><strong>$/hr</strong> is the estimated electricity cost accrued continuously whether idle or busy, shared across all users of the site. It is computed in real time from SDG&amp;E TOU-DR2 all-in variable energy rates (on/off-peak) and excludes fixed charges, taxes, and baseline credits.</p>`,
-  `<p>All parameters are adjustable under <em>Advanced</em>.</p>`,
-].join("");
 
 export const POWER_PROFILES = {
         "auto-live": {
@@ -49,7 +38,7 @@ export const POWER_PROFILES = {
           modalHtml: [
             `<p>BartlebyGPT is a satire, but the cost data is genuine.</p>`,
             `<p>This mode automatically selects the most appropriate deployment profile for the active backend and uses live telemetry fields whenever available.</p>`,
-            `<p>On the main API deployment, Auto resolves to the base Jetson profile. On the Pi deployment, Auto resolves to the Raspberry Pi profile. The home RTX profile remains available as a manual selection.</p>`,
+            `<p>On the main API deployment, Auto resolves to the home RTX profile. On the eco deployment, Auto resolves to the Jetson Orin profile. On the Pi deployment, Auto resolves to the Raspberry Pi profile.</p>`,
             `<p>All parameters are adjustable under <em>Advanced</em>.</p>`,
           ].join(""),
         },
@@ -73,25 +62,22 @@ export const POWER_PROFILES = {
           ].join(""),
         },
         "eco-orin": {
-          label: "Base (Jetson Orin Nano Super 8GB)",
-          legacyLabel: LEGACY_ECO_ORIN_LABEL,
+          label: "Eco (Jetson Orin Nano Super 8GB)",
           costMode: "per-kwh",
           overheadMultiplier: 1.0,
           defaults: {
             wattsIdle: 7.5,
-            wattsActive: 21,
-            gco2PerWh: 0.00,
-            costPerKwh: 0.00,
+            wattsActive: 20,
+            gco2PerWh: 0.200,
+            costPerKwh: 0.55,
           },
-          legacyModalHtml: LEGACY_ECO_ORIN_MODAL_HTML,
           modalHtml: [
-            `<p>BartlebyGPT is a satire, but the infrastructure enacts a different critique. The power data is genuine, as it is running an open, sovereign, on-the-box AI with off-the-grid solar. The closed-loop system is running in San Diego on a ultra-low power edge computer powered by a solar battery setup, connected via 4G with Wi-Fi backup.</p>`,
-            `<p><strong>Materials: </strong>A NVIDIA Jetson Orin Nano Super plugs into an Anker Solix C300X DC (288Wh capacity) powered by a 100W solar panel. The Jetson pulls roughly 8W at idle and up to ~21W under inference load, which can generate about 20 simultaneous replies.</p>`,
-            `<p><strong>Software: </strong> The LLM is <a href="https://huggingface.co/staeiou/bartleby-qwen3-1.7b_v4">an open-weight 1.7B model</a> I fine-tuned with Alibaba's <a href-"https://huggingface.co/Qwen/Qwen3-1.7B">Qwen3-1.7B</a> using <a href="https://huggingface.co/unsloth/Qwen3-1.7B-GGUF">Unsloth</a>, served via <a href="https://github.com/vllm-project/vllm">vLLM</a>.</p>`,
-            `<p><strong>% battery </strong> is directly pulled from the C300X, live with a 1-2 second delay. The background color is also a battery meter: the lower the battery, the more of the background is grey. This UI idea and icons are shamelessly stolen from <a href="https://solar.lowtechmagazine.com/power">Low Tech Magazine</a>.</p>`,
-            `<p><strong>Watts </strong> is the live total DC output measured from the C300X battery management system. A box or ceiling fan pulls 50-75W, a MacBook Air streaming video pulls 20-30W, and a standard LED/CFL room lightbulb pulls 10-15W.</p>`,
-            `<p><strong>Solar </strong> is the live solar input to the battery, also read from the C300X. When solar input exceeds total draw, the battery is gaining charge and the server is running on pure sunlight. When it's dark or overcast, the Jetson is powered by the battery.</p>`,
-            `<p>Because this deployment is solar-charged, its operational electricity cost and carbon footprint is approximately zero. This does not include the carbon cost in manufacturing and distributing the Jetson, battery, solar panel, your device, and network infrastructure.</p>`,
+            `<p>BartlebyGPT is a satire, but the cost data is genuine.</p>`,
+            `<p>These figures reflect the live power consumption of BartlebyGPT's eco deployment, which runs in a residential home in San Diego, CA on a Jetson Orin Nano Super 8GB. The machine pulls roughly <strong>~8W</strong> at idle and scales up to about <strong>~21W</strong> at full load while serving a low-power inference stack.</p>`,
+            `<p><strong>Watts</strong> is the estimated total draw for all current BartlebyGPT users combined. For this deployment, we use live wall-power telemetry from an ESPHome smart plug behind the Jetson, so reported watts reflect total system draw directly. A small air conditioner window unit or TV with sound system pulls 400-600W, a fan pulls 50-75W, a MacBook Air streaming video pulls 20-30W, and an LED/CFL lightbulb pulls 10-15W.</p>`,
+            `<p><strong>gCO₂/hr</strong> is the estimated carbon cost of that total estimated power draw: watts × grid carbon intensity. San Diego is served by <a href="https://sdcommunitypower.org/wp-content/uploads/2025/11/Community-Power-2024-Power-Content-Label.pdf">San Diego Community Power</a> cleaner energy program via SDG&amp;E, which has a ~53% renewables mix. This has an estimated emissions factor of ~0.200 gCO₂/Wh, though this varies with the grid mix and time of day. This does not include emissions from training and fine-tuning the model, manufacturing the hardware, disposing of end-of-life hardware, networking between your device and the server, or other inputs and externalities.</p>`,
+            `<p><strong>$/hr</strong> is the estimated electricity cost accrued continuously whether idle or busy, shared across all users of the site. It is computed in real time from SDG&amp;E TOU-DR2 all-in variable energy rates (on/off-peak) and excludes fixed charges, taxes, and baseline credits.</p>`,
+            `<p>All parameters are adjustable under <em>Advanced</em>.</p>`,
           ].join(""),
         },
         "pi-rpi4": {
@@ -105,12 +91,12 @@ export const POWER_PROFILES = {
             costPerKwh: 0.55,
           },
           modalHtml: [
-            `<p>BartlebyGPT is a satire, but the power data is genuine. This pi.bartlebygpt.org site and the LLM behind it are running entirely on a single Raspberry Pi 5 on solar power and batteries.</p>`,
-            `<p><strong>Materials:</strong>The Pi5 plugs into an Anker Solix C300X DC (288Wh capacity) powered by a 50W solar panel. The Pi pulls roughly 3–5W at idle and up to ~12W under inference load. It generates a small amount of heat, but far less than a night-light.</p>`,
-            `<p><strong>% battery </strong> is directly pulled from the C300X. The background color is also a battery meter: the lower the battery, the more of the background is grey. This UI idea and icons are shamelessly stolen from <a href="https://solar.lowtechmagazine.com/power">Low Tech Magazine</a>.</p>`,
-            `<p><strong>Watts </strong> is the live total DC output, measured every two seconds from the C300X's battery management system over Bluetooth. A box or ceiling fan pulls 50–75W, a MacBook Air streaming video pulls 20–30W, and a standard LED/CFL room lightbulb pulls 10–15W.</p>`,
-            `<p><strong>Solar </strong> is the live solar input to the battery, also read directly from the C300X. When solar input exceeds total draw, the battery is gaining charge and the server is running on pure sunlight. When it's dark or overcast, the Pi is powered by the battery.</p>`,
-            `<p>Because this deployment is solar-charged, its operational electricity cost and carbon footprint is approximately zero. This does not include the carbon cost in manufacturing and distributing the Pi, the battery, the solar panels, your device, and the network infrastructure from your device to the Pi and back.</p>`,
+            `<p>BartlebyGPT is a satire, but the cost data is genuine.</p>`,
+            `<p>These figures reflect the live power consumption of the Pi deployment, which runs on a Raspberry Pi 4B using llama.cpp.</p>`,
+            `<p><strong>Watts</strong> is the estimated total draw for all current BartlebyGPT users combined. For this deployment, we use live wall-power telemetry from an ESPHome smart plug behind the Pi, so reported watts reflect total system draw directly.</p>`,
+            `<p><strong>gCO₂/hr</strong> is the estimated carbon cost of that total estimated power draw: watts × grid carbon intensity. This uses the same configurable emissions factor as other deployments.</p>`,
+            `<p><strong>$/hr</strong> is the estimated electricity cost accrued continuously whether idle or busy, shared across all users of the site. It is computed from configured per-kWh rates.</p>`,
+            `<p>All parameters are adjustable under <em>Advanced</em>.</p>`,
           ].join(""),
         },
         "spokane-dc": {

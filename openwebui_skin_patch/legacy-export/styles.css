@@ -18,8 +18,6 @@
   --rule: rgba(30, 30, 28, 0.09);
   --app-height: 100dvh;
   --keyboard-offset: 0px;
-  --solix-battery-fill: 100%;
-  --color-warmth: 0;
 }
 
 * {
@@ -36,10 +34,7 @@ body {
   background:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.038'/%3E%3C/svg%3E"),
     radial-gradient(ellipse 80% 50% at 50% 0%, rgba(168, 162, 140, 0.14), transparent 60%),
-    linear-gradient(180deg,
-      #e2e8f0 calc(100% - var(--solix-battery-fill)),
-      #ece8dc calc(100% - var(--solix-battery-fill)),
-      #e4dfd0 100%);
+    linear-gradient(180deg, #ece8dc 0%, #e4dfd0 100%);
   color: var(--text);
   font-family: "EB Garamond", "Palatino Linotype", "Book Antiqua", Georgia, serif;
   font-size: 19px;
@@ -50,78 +45,13 @@ body {
   padding: 0;
 }
 
-body::before {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: calc(100% - var(--solix-battery-fill));
-  backdrop-filter: saturate(0.18) brightness(1.03);
-  background: rgba(190, 215, 255, 0.05);
-  pointer-events: none;
-  z-index: 5;
-}
-
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  backdrop-filter:
-    sepia(calc(var(--color-warmth) * 0.4))
-    brightness(calc(1 - var(--color-warmth) * 0.18))
-    contrast(calc(1 + var(--color-warmth) * 0.2));
-  pointer-events: none;
-  z-index: 4;
-}
-
-input[type="range"] {
-  -webkit-appearance: none;
-  appearance: none;
-  border: none;
-  background: transparent;
-  padding: 8px 0;
-  cursor: pointer;
-}
-
-input[type="range"]::-webkit-slider-runnable-track {
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(30, 30, 28, 0.22);
-}
-
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--text);
-  margin-top: -7px;
-  opacity: 0.65;
-}
-
-input[type="range"]::-moz-range-track {
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(30, 30, 28, 0.22);
-}
-
-input[type="range"]::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--text);
-  border: none;
-  opacity: 0.65;
-}
-
 .app-shell {
   --shell-gap: 12px;
   width: 100%;
   height: var(--app-height);
   max-height: var(--app-height);
   overflow: hidden;
-  padding: 16px 26px 0 16px;
+  padding: 16px 16px 0;
   display: grid;
   grid-template-rows: auto 1fr auto auto;
   gap: var(--shell-gap);
@@ -203,43 +133,6 @@ input[type="range"]::-moz-range-thumb {
   font-style: normal;
 }
 
-.watts-live-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #2d7a3a;
-  margin-left: 5px;
-  vertical-align: middle;
-  position: relative;
-  top: -1px;
-  animation: live-pulse 2s ease-in-out infinite;
-}
-
-@keyframes live-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
-
-.power-debug-table {
-  margin-top: 8px;
-  border-collapse: collapse;
-  font-size: 17px;
-  font-family: "EB Garamond", Georgia, serif;
-  color: var(--text);
-  width: 100%;
-}
-
-.power-debug-table td {
-  padding: 2px 10px 2px 0;
-  vertical-align: top;
-}
-
-.power-debug-table td:nth-child(odd) {
-  opacity: 0.55;
-  white-space: nowrap;
-}
-
 .power-info-btn {
   display: inline-flex;
   align-items: center;
@@ -266,41 +159,6 @@ input[type="range"]::-moz-range-thumb {
   background: var(--accent);
   color: #ccccc8;
   border-color: var(--accent);
-}
-
-/* Battery widget — rides the fill line on the right */
-.battery-badge {
-  position: fixed;
-  right: 0;
-  top: calc(100% - var(--solix-battery-fill));
-  z-index: 10;
-  cursor: pointer;
-  border-top: 1px solid rgba(28, 26, 20, 0.35);
-  padding: 5px 9px 0 7px;
-  display: flex;
-  align-items: flex-start;
-  gap: 5px;
-  font-family: "EB Garamond", Georgia, serif;
-  font-size: 15px;
-  font-style: italic;
-  color: rgba(28, 26, 20, 0.65);
-}
-
-.battery-badge svg {
-  width: 18px;
-  height: auto;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-/* Hide battery icon when chat content is present (splash only shows icon) */
-body:has(.messages:not(.is-welcome)) .battery-badge svg {
-  display: none;
-}
-
-.brand-solar {
-  font-style: italic;
-  color: #1a1a18;
 }
 
 /* Modal overlay */
@@ -350,99 +208,6 @@ body:has(.messages:not(.is-welcome)) .battery-badge svg {
   margin-bottom: 0;
 }
 
-.power-history-section {
-  margin-top: 12px;
-  display: grid;
-  gap: 10px;
-}
-
-.power-history-section h3 {
-  margin: 0;
-  font-size: 19px;
-  font-weight: 700;
-}
-
-.power-history-status {
-  margin: 0;
-  font-size: 15px;
-  color: rgba(44, 40, 34, 0.72);
-}
-
-.power-history-legend {
-  margin: 2px 0 0;
-  display: flex;
-  gap: 18px;
-  flex-wrap: wrap;
-  font-size: 18px;
-  color: rgba(36, 32, 26, 0.84);
-}
-
-.power-history-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.power-history-key {
-  display: inline-block;
-  width: 26px;
-  height: 3px;
-  border-radius: 999px;
-}
-
-.power-history-key.is-load {
-  background: #8f2f2f;
-}
-
-.power-history-key.is-charge {
-  background: #246f38;
-}
-
-.power-history-key.is-soc {
-  background: rgba(214, 183, 72, 0.9);
-}
-
-.power-history-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-}
-
-.power-history-card {
-  border: 1px solid rgba(30, 28, 20, 0.11);
-  background: rgba(249, 246, 237, 0.68);
-  padding: 10px;
-  display: grid;
-  gap: 6px;
-}
-
-.power-history-card h4 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.power-history-chart {
-  width: 100%;
-  height: 360px;
-  min-height: 360px;
-}
-
-.power-history-empty {
-  margin: 0;
-  border: 1px dashed rgba(30, 28, 20, 0.18);
-  padding: 12px;
-  font-size: 14px;
-  color: rgba(44, 40, 34, 0.75);
-}
-
-@media (max-width: 900px) {
-  .power-history-chart {
-    height: 300px;
-    min-height: 300px;
-  }
-}
-
 .power-modal-close {
   position: sticky;
   top: -28px;
@@ -490,7 +255,6 @@ body:has(.messages:not(.is-welcome)) .battery-badge svg {
   letter-spacing: 0.01em;
   line-height: 1;
   color: #1a1a18;
-  white-space: nowrap;
   /* Slight fade, like ink that has sat a long time */
   opacity: 1;
 }
@@ -909,30 +673,6 @@ body:has(.messages:not(.is-welcome)) .battery-badge svg {
   background: var(--bot-bg);
 }
 
-@keyframes typing-dot {
-  0%, 60%, 100% { transform: scale(1);   opacity: 0.35; }
-  30%           { transform: scale(1.4); opacity: 1; }
-}
-
-.typing-indicator {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 0;
-}
-
-.typing-indicator span {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: currentColor;
-  display: inline-block;
-  animation: typing-dot 1.2s ease-in-out infinite;
-}
-
-.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
-.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
-
 .composer {
   padding: 12px;
   display: grid;
@@ -1139,7 +879,7 @@ details.connection-settings > summary {
 @media (max-width: 1060px) {
   .app-shell {
     --shell-gap: 6px;
-    padding: 6px 16px 0 6px;
+    padding: 6px 6px 0 6px;
     gap: var(--shell-gap);
   }
 
@@ -1230,7 +970,7 @@ details.connection-settings > summary {
 @media (max-width: 940px) {
   .app-shell {
     --shell-gap: 4px;
-    padding: 2px 12px 0 2px;
+    padding: 2px 2px 0 2px;
     gap: var(--shell-gap);
   }
 

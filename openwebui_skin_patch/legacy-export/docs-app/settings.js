@@ -4,7 +4,7 @@ import {
   SETTINGS_KEY,
   POWER_PROFILES,
   defaults,
-} from "./config.js?v=20260320a1";
+} from "./config.js?v=20260315f1";
 
 export function coercePositiveInt(value, fallback) {
   const parsed = Number.parseInt(String(value), 10);
@@ -76,13 +76,7 @@ function normalizeStoredBaseUrl(baseUrl) {
 
 function getDeploymentDefaults() {
   const deploymentBaseUrl = getDeploymentDefaultBaseUrl();
-  const deploymentScope = getDeploymentScope();
-  let resolvedAutoProfileId = "home-sd";
-  if (deploymentScope === "api" || deploymentBaseUrl === ECO_BASE_URL) {
-    resolvedAutoProfileId = "eco-orin";
-  } else if (deploymentScope === "pi") {
-    resolvedAutoProfileId = "pi-rpi4";
-  }
+  const resolvedAutoProfileId = deploymentBaseUrl === ECO_BASE_URL ? "eco-orin" : "home-sd";
   const resolvedAutoProfile = POWER_PROFILES[resolvedAutoProfileId] || {};
   const resolvedDefaults = resolvedAutoProfile.defaults || {};
   return {
@@ -216,7 +210,6 @@ export function createSettingsController(elements) {
       gco2PerWh: coerceFloat(elements.gco2PerWh.value, defaults.gco2PerWh),
       costPerHr: coerceFloat(elements.costPerHr.value, defaults.costPerHr),
       costPerKwh: coerceFloat(elements.costPerKwh.value, defaults.costPerKwh),
-      colorWarmth: coerceFloat(elements.colorWarmth.value, defaults.colorWarmth),
     };
   }
 
@@ -248,7 +241,6 @@ export function createSettingsController(elements) {
     elements.gco2PerWh.value = settings.gco2PerWh;
     elements.costPerHr.value = settings.costPerHr;
     elements.costPerKwh.value = settings.costPerKwh;
-    elements.colorWarmth.value = settings.colorWarmth ?? defaults.colorWarmth;
   }
 
   return {

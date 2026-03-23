@@ -1,5 +1,5 @@
-import { MODEL_MAX_CONTEXT_TOKENS, defaults, FEEDBACK_PATH } from "./config.js?v=20260320a1";
-import { coercePositiveInt, getEffectiveBaseUrl } from "./settings.js?v=20260320a1";
+import { MODEL_MAX_CONTEXT_TOKENS, defaults, FEEDBACK_PATH } from "./config.js?v=20260315f1";
+import { coercePositiveInt, getEffectiveBaseUrl } from "./settings.js?v=20260315f1";
 
 const ELLIPSIS = "\u2026";
 
@@ -51,21 +51,7 @@ export function createChatUi({
 
   function setMessageContent(entry, content) {
     entry.content = content;
-    if (entry.role === "assistant") {
-      if (content === "") {
-        entry.bubbleEl.textContent = "";
-        if (!entry.bubbleEl.querySelector(".typing-indicator")) {
-          const indicator = document.createElement("div");
-          indicator.className = "typing-indicator";
-          for (let i = 0; i < 3; i++) indicator.appendChild(document.createElement("span"));
-          entry.bubbleEl.appendChild(indicator);
-        }
-      } else {
-        entry.bubbleEl.textContent = content;
-      }
-    } else {
-      entry.bubbleEl.textContent = content;
-    }
+    entry.bubbleEl.textContent = content;
   }
 
   function appendHistoryTurn(userContent, assistantContent) {
@@ -112,14 +98,7 @@ export function createChatUi({
 
     const bubble = document.createElement("div");
     bubble.className = "bubble";
-    if (role === "assistant" && content === "") {
-      const indicator = document.createElement("div");
-      indicator.className = "typing-indicator";
-      for (let i = 0; i < 3; i++) indicator.appendChild(document.createElement("span"));
-      bubble.appendChild(indicator);
-    } else {
-      bubble.textContent = content;
-    }
+    bubble.textContent = content;
 
     const actions = document.createElement("div");
     actions.className = "message-actions";

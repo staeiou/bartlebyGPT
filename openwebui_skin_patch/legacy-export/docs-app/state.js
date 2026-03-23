@@ -11,11 +11,6 @@ export function createState() {
     powerTelemetryInFlight: false,
     powerTelemetryTimer: null,
     powerTelemetryMode: "",
-    powerHistory: null,
-    powerHistoryAvailable: false,
-    powerHistoryInFlight: false,
-    powerHistoryTimer: null,
-    powerHistoryLastFetchedAt: 0,
     idle: false,
   };
 }

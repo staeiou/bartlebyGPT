@@ -1,11 +1,11 @@
-import { createAnalytics } from "./analytics.js?v=20260320a1";
-import { createChatApi } from "./chat-api.js?v=20260320a1";
-import { createChatUi } from "./chat-ui.js?v=20260320a1";
-import { getElements } from "./dom.js?v=20260320a1";
-import { createPowerController } from "./power.js?v=20260320a1";
-import { createSettingsController } from "./settings.js?v=20260320a1";
-import { createState } from "./state.js?v=20260320a1";
-import { createWelcomeController } from "./welcome.js?v=20260320a1";
+import { createAnalytics } from "./analytics.js?v=20260315f1";
+import { createChatApi } from "./chat-api.js?v=20260315f1";
+import { createChatUi } from "./chat-ui.js?v=20260315f1";
+import { getElements } from "./dom.js?v=20260315f1";
+import { createPowerController } from "./power.js?v=20260315f1";
+import { createSettingsController } from "./settings.js?v=20260315f1";
+import { createState } from "./state.js?v=20260315f1";
+import { createWelcomeController } from "./welcome.js?v=20260315f1";
 
 const elements = getElements();
 const state = createState();
@@ -134,7 +134,6 @@ window.addEventListener("resize", () => {
   elements.gco2PerWh,
   elements.costPerHr,
   elements.costPerKwh,
-  elements.colorWarmth,
 ].forEach((element) => {
   element.addEventListener("change", () => {
     settings.saveSettings();
@@ -142,11 +141,6 @@ window.addEventListener("resize", () => {
   element.addEventListener("blur", () => {
     settings.saveSettings();
   });
-});
-
-elements.colorWarmth.addEventListener("input", () => {
-  document.documentElement.style.setProperty("--color-warmth", elements.colorWarmth.value);
-  settings.saveSettings();
 });
 
 elements.powerProfile.addEventListener("change", () => {
@@ -179,10 +173,6 @@ elements.powerInfoBtn.addEventListener("click", () => {
   power.openPowerModal();
 });
 
-elements.batteryBadge.addEventListener("click", () => {
-  power.openPowerModal();
-});
-
 elements.powerDisplay.addEventListener("click", (event) => {
   if (event.target !== elements.powerInfoBtn) {
     power.openPowerModal();
@@ -201,7 +191,6 @@ elements.powerModalBackdrop.addEventListener("click", (event) => {
 
 state.turnCount = analytics.loadTurnCount();
 settings.applySettings(settings.loadSettings());
-document.documentElement.style.setProperty("--color-warmth", elements.colorWarmth.value);
 power.scheduleViewportMetricsUpdate();
 power.syncPowerProfileUi();
 power.updatePowerDisplay(false);
@@ -209,7 +198,6 @@ chatUi.updateInputCount();
 power.updateMobileHallucination();
 power.initIdleDetection();
 power.startPowerTelemetryPolling();
-power.startPowerHistoryPolling();
 analytics.goatStart();
 welcome.initCardRotation();
 welcome.renderWelcome();

@@ -25,7 +25,6 @@ const ELEMENT_IDS = {
   costPerKwhField: "cost-per-kwh-field",
   powerDisplay: "power-display",
   powerWatts: "power-watts",
-  wattsLiveDot: "watts-live-dot",
   powerCo2: "power-co2",
   powerCost: "power-cost",
   powerActiveCount: "power-active-count",
@@ -35,14 +34,10 @@ const ELEMENT_IDS = {
   connectionSettings: "connection-settings",
   connectionToggle: "connection-toggle",
   mobileHallucination: "mobile-hallucination",
-  batteryBadge: "battery-badge",
-  batteryBadgeFill: "battery-badge-fill",
-  batteryBadgePct: "battery-badge-pct",
   powerModalBackdrop: "power-modal-backdrop",
   powerModalClose: "power-modal-close",
   powerModalTitle: "power-modal-title",
   powerModalBody: "power-modal-body",
-  colorWarmth: "color-warmth",
 };
 
 export function getElements(doc = document) {
