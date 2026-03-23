@@ -402,6 +402,10 @@ body:has(.messages:not(.is-welcome)) .battery-badge svg {
   background: rgba(214, 183, 72, 0.9);
 }
 
+.power-history-key.is-concurrent {
+  background: #4a6fa5;
+}
+
 .power-history-grid {
   display: grid;
   grid-template-columns: 1fr;

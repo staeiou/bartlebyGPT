@@ -3,6 +3,7 @@ import { getEffectiveBaseUrl } from "./settings.js?v=20260320a1";
 
 export function createPowerController({ elements, state, getSettings }) {
   let viewportMetricsRaf = 0;
+  let echartsLoadPromise = null;
   let historyModalCacheKey = "";
   let historyModalCacheHtml = "";
   let historyModalSectionKey = "";
@@ -151,6 +152,7 @@ export function createPowerController({ elements, state, getSettings }) {
         loadW: toFiniteNumber(point && point.load_w),
         chargeW: toFiniteNumber(point && point.charge_w),
         socPct: toFiniteNumber(point && point.soc_pct),
+        concurrentAvg: toFiniteNumber(point && point.concurrent_avg),
       }))
       .filter((point) => point.ts !== null)
       .sort((a, b) => a.ts - b.ts);
@@ -202,6 +204,7 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
       load: points.map((point) => [point.ts * 1000, point.loadW]),
       charge: points.map((point) => [point.ts * 1000, point.chargeW]),
       soc: points.map((point) => [point.ts * 1000, point.socPct]),
+      concurrent: points.map((point) => [point.ts * 1000, point.concurrentAvg]),
     };
   }
 
@@ -308,6 +311,13 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
           },
           splitLine: { show: false },
         },
+        {
+          type: "value",
+          show: false,
+          position: "right",
+          offset: 0,
+          min: 0,
+        },
       ],
       series: [
         {
@@ -340,6 +350,16 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
           areaStyle: { color: "rgba(214,183,72,0.5)" },
           itemStyle: { color: "#8d7722" },
           data: series.soc,
+        },
+        {
+          name: "Concurrent",
+          type: "line",
+          yAxisIndex: 2,
+          showSymbol: false,
+          connectNulls: false,
+          lineStyle: { width: lineWidth, color: "#4a6fa5" },
+          itemStyle: { color: "#4a6fa5" },
+          data: series.concurrent,
         },
       ],
     };
@@ -440,12 +460,13 @@ ${renderHistoryCard("Last 7 Days", history.history_7d, "7d")}`
 
     const html = `<hr>
 <section class="power-history-section">
-<h3>Battery + Load History</h3>
+<h3>Battery, Load &amp; Usage History</h3>
 ${statusLine ? `<p class="power-history-status">${escapeHtml(statusLine)}</p>` : ""}
 <p class="power-history-legend">
 <span><i class="power-history-key is-load"></i>Load</span>
 <span><i class="power-history-key is-charge"></i>Charge</span>
 <span><i class="power-history-key is-soc"></i>State of Charge</span>
+<span><i class="power-history-key is-concurrent"></i>Concurrent</span>
 </p>
 <div class="power-history-grid">
 ${charts}
@@ -482,6 +503,8 @@ ${charts}
       const n = wattsBuffer.filter(p => p.ts >= cutoff).length;
       return v !== null ? `${v.toFixed(2)}W (n=${n})` : "—";
     };
+    const concurrentRunning = Number.isFinite(Number(payload.requests_running)) ? Math.round(Number(payload.requests_running)) : 0;
+    const concurrentWaiting = Number.isFinite(Number(payload.requests_waiting)) ? Math.round(Number(payload.requests_waiting)) : 0;
     return `<hr>
 <div class="power-debug">
 <table class="power-debug-table">
@@ -489,6 +512,7 @@ ${charts}
 <tr><td>live</td><td>${live}</td><td>mode</td><td>${mode}</td></tr>
 <tr><td>raw measured</td><td class="power-debug-raw">${raw}</td><td>base overhead</td><td>${base}</td></tr>
 <tr><td>display total</td><td class="power-debug-total">${total}</td><td>clamp</td><td>${clampStr}</td></tr>
+<tr><td>concurrent</td><td class="power-debug-concurrent">${concurrentRunning} running</td><td>waiting</td><td class="power-debug-waiting">${concurrentWaiting}</td></tr>
 <tr><td>last reading</td><td class="power-debug-age" data-reading-ts="${payload.power_reading_ts || ""}">${age}</td><td></td><td></td></tr>
 <tr><td>avg 5s</td><td class="power-debug-avg" data-secs="5">${fmtAvg(5)}</td><td>avg 10s</td><td class="power-debug-avg" data-secs="10">${fmtAvg(10)}</td></tr>
 <tr><td>avg 15s</td><td class="power-debug-avg" data-secs="15">${fmtAvg(15)}</td><td>avg 30s</td><td class="power-debug-avg" data-secs="30">${fmtAvg(30)}</td></tr>
@@ -591,6 +615,16 @@ ${charts}
       if (rawCell) rawCell.textContent = isWallTotal ? `${fmt1(payload.estimated_total_watts)} (wall meter)` : fmt1(payload.measured_server_watts ?? payload.measured_gpu_watts);
       const totalCell = elements.powerModalBody.querySelector(".power-debug-total");
       if (totalCell) totalCell.textContent = fmt1(payload.estimated_total_watts);
+      const concurrentCell = elements.powerModalBody.querySelector(".power-debug-concurrent");
+      if (concurrentCell) {
+        const r = Number.isFinite(Number(payload.requests_running)) ? Math.round(Number(payload.requests_running)) : 0;
+        concurrentCell.textContent = `${r} running`;
+      }
+      const waitingCell = elements.powerModalBody.querySelector(".power-debug-waiting");
+      if (waitingCell) {
+        const w = Number.isFinite(Number(payload.requests_waiting)) ? Math.round(Number(payload.requests_waiting)) : 0;
+        waitingCell.textContent = String(w);
+      }
     }
     ensureHistoryChartsRendered(resolution);
   }
@@ -1105,6 +1139,19 @@ ${charts}
     elements.connectionSettings.open = !elements.connectionSettings.open;
   }
 
+  function loadEcharts() {
+    if (typeof window !== "undefined" && window.echarts) return Promise.resolve();
+    if (echartsLoadPromise) return echartsLoadPromise;
+    echartsLoadPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js";
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+    return echartsLoadPromise;
+  }
+
   function openPowerModal() {
     elements.powerModalBackdrop.classList.add("is-open");
     const stale =
@@ -1115,6 +1162,11 @@ ${charts}
     }
     updatePowerDisplay(state.busy);
     scheduleHistoryChartResize();
+    void loadEcharts().then(() => {
+      if (elements.powerModalBackdrop.classList.contains("is-open")) {
+        updatePowerDisplay(state.busy);
+      }
+    });
   }
 
   function closePowerModal() {
