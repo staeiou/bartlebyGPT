@@ -89,6 +89,8 @@ STATE = {
     "solix_voltage_mv": None,
     "solix_temp_c": None,
     "solix_reading_ts": None,
+    "solix_charging_status": None,
+    "solix_effective_solar_w": None,
 }
 
 JTOP_POWER_SERVICE = None
@@ -252,6 +254,7 @@ def read_esphome_power_watts():
     extra = {k: payload[k] for k in (
         "solix_soc_pct", "solix_solar_input_w", "solix_total_input_w",
         "solix_voltage_mv", "solix_temp_c", "solix_reading_ts",
+        "solix_charging_status",
     ) if k in payload}
     raw_value = payload.get("value")
     if raw_value is None and "value" not in payload:
@@ -366,6 +369,10 @@ def build_binned_window(rows, start_ts, end_ts, bin_seconds, vllm_rows=None):
             "soc_pct": None,
             "soc_ts": None,
             "sum_completed": 0.0,
+            "sum_running": 0.0,
+            "count_running": 0,
+            "sum_waiting": 0.0,
+            "count_waiting": 0,
         }
         for _ in range(bin_count)
     ]
@@ -408,6 +415,14 @@ def build_binned_window(rows, start_ts, end_ts, bin_seconds, vllm_rows=None):
         completed = row.get("completed")
         if completed is not None:
             bins[idx]["sum_completed"] += completed
+        running = row.get("running")
+        if running is not None:
+            bins[idx]["sum_running"] += running
+            bins[idx]["count_running"] += 1
+        waiting = row.get("waiting")
+        if waiting is not None:
+            bins[idx]["sum_waiting"] += waiting
+            bins[idx]["count_waiting"] += 1
 
     points = []
     carry_soc = None
@@ -429,7 +444,16 @@ def build_binned_window(rows, start_ts, end_ts, bin_seconds, vllm_rows=None):
         else:
             carry_soc = soc_pct
 
-        requests_count = int(round(item["sum_completed"])) if item["sum_completed"] > 0 else None
+        avg_concurrent = (
+            round(item["sum_running"] / item["count_running"], 1)
+            if item["count_running"] > 0
+            else None
+        )
+        avg_waiting = (
+            round(item["sum_waiting"] / item["count_waiting"], 1)
+            if item["count_waiting"] > 0
+            else None
+        )
         point_ts = min(end_ts, start_ts + ((idx + 1) * bin_seconds))
         points.append(
             {
@@ -438,7 +462,8 @@ def build_binned_window(rows, start_ts, end_ts, bin_seconds, vllm_rows=None):
                 "load_w": load_w,
                 "charge_w": charge_w,
                 "soc_pct": round(soc_pct, 3) if soc_pct is not None else None,
-                "requests_count": requests_count,
+                "avg_concurrent": avg_concurrent,
+                "avg_waiting": avg_waiting,
             }
         )
 
@@ -598,9 +623,20 @@ def sample_once():
             current["power_rails_watts"] = next_state["power_rails_watts"]
         if "power_backend" in next_state:
             current["power_backend"] = next_state["power_backend"]
-        for k in ("solix_soc_pct", "solix_solar_input_w", "solix_total_input_w", "solix_voltage_mv", "solix_temp_c", "solix_reading_ts"):
+        for k in ("solix_soc_pct", "solix_solar_input_w", "solix_total_input_w", "solix_voltage_mv", "solix_temp_c", "solix_reading_ts", "solix_charging_status"):
             if k in next_state:
                 current[k] = next_state[k]
+
+        # Option C: at 100% SOC the Solix reports 0W solar input (charge controller
+        # stops accepting charge) but solar is still powering the load via pass-through.
+        # Effective solar = load watts when full and solar reads zero.
+        _soc = current.get("solix_soc_pct")
+        _solar = current.get("solix_solar_input_w")
+        _load = current.get("estimated_total_watts")
+        if _soc is not None and _soc >= 100 and _solar == 0 and _load is not None:
+            current["solix_effective_solar_w"] = _load
+        else:
+            current["solix_effective_solar_w"] = _solar
 
         if measured_server_watts is not None:
             current["power_reading_ts"] = current.get("solix_reading_ts") or time.time()
