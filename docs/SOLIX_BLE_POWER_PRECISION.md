@@ -275,7 +275,7 @@ updated via direct DOM writes to bypass the `shouldPreserveDom` chart-preservati
 ## References
 
 - Wannamaker, R.A. (2003). *The Theory of Dithered Quantization*. PhD thesis.
-  http://www.robertwannamaker.com/writings/rw_phd.pdf
+  https://web.archive.org/web/20240423010933/http://www.robertwannamaker.com/writings/rw_phd.pdf
 - Texas Instruments (2012). *AN-804: Improving A/D Converter Performance Using Dither*.
   https://www.ti.com/lit/an/snoa232/snoa232.pdf
 - Peters, O. (2019). The ergodicity problem in economics. *Nature Physics* 15, 1216–1221.
