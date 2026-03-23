@@ -41,26 +41,62 @@
 
 ## Telemetry Contract (Stable)
 
-All deployments should emit the same JSON shape from `/telemetry/power`:
+All deployments emit the same JSON shape from `/telemetry/power`:
 
-- `timestamp`
-- `measured_server_watts`
-- `measured_gpu_watts`
-- `base_system_watts`
-- `estimated_total_watts`
-- `estimated_total_server_watts`
-- `idle_gpu_watts`
-- `attributed_gpu_watts`
-- `requests_running`
-- `requests_waiting`
-- `server_load`
-- `is_active`
-- `power_backend`
-- `power_rails_watts`
-- `source`
-- `last_error`
+**Core power fields**
 
-This avoids frontend branching by hardware type.
+| Field | Description |
+|-------|-------------|
+| `estimated_total_watts` | Display value. Wall watts (Solix path) or `(base + measured) × multiplier` (jtop/smi path). |
+| `estimated_total_server_watts` | Same as above (legacy alias). |
+| `measured_server_watts` | Raw component load from jtop/nvidia-smi; `null` on wall-total path. |
+| `measured_gpu_watts` | Same as `measured_server_watts` (legacy alias). |
+| `base_system_watts` | Fixed base overhead added on component-load path; `0` on wall-total path. |
+| `idle_gpu_watts` | EMA of watts when no requests are running. |
+| `attributed_gpu_watts` | Watts per active request. |
+| `power_measurement_kind` | `"wall-total"` (Solix/ESPHome) or `"component-load"` (jtop/smi). |
+| `watts_is_live` | `true` when source is a wall meter, `false` when estimated. |
+| `power_reading_ts` | Unix timestamp of the underlying power reading. |
+| `power_backend` | Active backend name (e.g. `"esphome"`, `"jtop"`). |
+| `power_rails_watts` | Dict of per-rail watts from jtop; empty on other paths. |
+| `clamp_min_watts` | Configured floor (0 = off). |
+| `clamp_max_watts` | Configured ceiling (0 = off). |
+
+**vLLM load fields**
+
+| Field | Description |
+|-------|-------------|
+| `requests_running` | Requests actively being processed. |
+| `requests_waiting` | Requests queued. |
+| `request_success_total` | Cumulative completed requests counter. |
+| `requests_completed_interval` | Delta completed since last sample. |
+| `server_load` | `/load` payload from vLLM. |
+| `is_active` | `true` when `requests_running > 0`. |
+| `cost_share_fraction` | Reserved for multi-tenant cost attribution (always `1.0` currently). |
+
+**Solix BLE fields** (present on Solix-backed deployments; `null` otherwise)
+
+| Field | Description |
+|-------|-------------|
+| `solix_soc_pct` | State of charge %. |
+| `solix_solar_input_w` | Raw solar input watts (tag `0xab`). Zero at 100% SOC. |
+| `solix_effective_solar_w` | Corrected solar: equals `estimated_total_watts` when `soc >= 100` and `solar_input == 0` (pass-through mode); otherwise equals `solix_solar_input_w`. |
+| `solix_total_input_w` | Total input watts (tag `0xac`). |
+| `solix_voltage_mv` | Battery voltage mV. |
+| `solix_temp_c` | Temperature °C. |
+| `solix_charging_status` | Raw uint8 from tag `0xb6` — transitions logged to journalctl. Meaning under reverse engineering. |
+| `solix_reading_ts` | Unix timestamp of the BLE packet. |
+
+**Metadata**
+
+| Field | Description |
+|-------|-------------|
+| `timestamp` | Unix timestamp of the last sample. |
+| `source` | Human-readable source string (e.g. `"esphome+vllm"`). |
+| `last_error` | Most recent sampling error string; empty on success. |
+
+The frontend uses `solix_effective_solar_w` (falling back to `solix_solar_input_w`) so that the
+solar display, battery time-remaining calculation, and history charts remain correct at 100% SOC.
 
 ## Deployment Profiles
 
