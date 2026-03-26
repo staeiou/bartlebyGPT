@@ -16,6 +16,18 @@ from urllib.parse import parse_qs, urljoin, urlparse
 from urllib.request import urlopen
 
 
+def env_bool(name, default=False):
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    val = str(raw).strip().lower()
+    if val in {"1", "true", "yes", "on"}:
+        return True
+    if val in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 HOST = os.environ.get("TELEMETRY_HOST", "127.0.0.1")
 PORT = int(os.environ.get("TELEMETRY_PORT", "18081"))
 SAMPLE_INTERVAL = float(os.environ.get("TELEMETRY_SAMPLE_INTERVAL", "1.0"))
@@ -26,6 +38,14 @@ REQUEST_TIMEOUT = float(os.environ.get("TELEMETRY_REQUEST_TIMEOUT", "1.5"))
 ESPHOME_POWER_URL = os.environ.get("TELEMETRY_ESPHOME_POWER_URL", "").strip()
 ESPHOME_BASE_URL = os.environ.get("TELEMETRY_ESPHOME_BASE_URL", "").strip().rstrip("/")
 ESPHOME_POWER_PATH = os.environ.get("TELEMETRY_ESPHOME_POWER_PATH", "/sensor/power").strip()
+SOLIX_STALE_SECONDS = max(0.0, float(os.environ.get("TELEMETRY_SOLIX_STALE_SECONDS", "45")))
+SOLIX_AUTO_RECOVER = env_bool("TELEMETRY_SOLIX_AUTO_RECOVER", default=True)
+SOLIX_RECOVERY_COOLDOWN_SECONDS = max(
+    30.0, float(os.environ.get("TELEMETRY_SOLIX_RECOVERY_COOLDOWN_SECONDS", "180"))
+)
+SOLIX_RECOVERY_ESCALATE_EVERY = max(
+    1, int(os.environ.get("TELEMETRY_SOLIX_RECOVERY_ESCALATE_EVERY", "2"))
+)
 SOLIX_LOG_DIR = os.environ.get("TELEMETRY_SOLIX_LOG_DIR", "/opt/bartleby/solix-monitor/logs").strip()
 VLLM_LOG_DIR = os.environ.get("TELEMETRY_VLLM_LOG_DIR", "").strip()
 HISTORY_CACHE_TTL_SECONDS = max(
@@ -97,6 +117,8 @@ JTOP_POWER_SERVICE = None
 JTOP_IMPORT_ERROR = ""
 HISTORY_LOCK = threading.Lock()
 HISTORY_CACHE = {"generated_at": 0.0, "payload": None}
+SOLIX_RECOVERY_LOCK = threading.Lock()
+SOLIX_RECOVERY_STATE = {"last_attempt_ts": 0.0, "attempt_count": 0}
 
 try:
     from jtop.core.power import PowerService
@@ -256,6 +278,17 @@ def read_esphome_power_watts():
         "solix_voltage_mv", "solix_temp_c", "solix_reading_ts",
         "solix_charging_status",
     ) if k in payload}
+    solix_reading_ts = safe_float(payload.get("solix_reading_ts"), lo=0.0)
+    if SOLIX_STALE_SECONDS > 0 and solix_reading_ts is not None:
+        age_seconds = time.time() - solix_reading_ts
+        if age_seconds > SOLIX_STALE_SECONDS:
+            recovery_note = maybe_recover_solix_feed(
+                reason=f"stale solix reading ({age_seconds:.1f}s old)",
+                age_seconds=age_seconds,
+            )
+            raise RuntimeError(
+                f"esphome solix reading stale by {age_seconds:.1f}s (>{SOLIX_STALE_SECONDS:.1f}s); {recovery_note}"
+            )
     raw_value = payload.get("value")
     if raw_value is None and "value" not in payload:
         state_value = str(payload.get("state", ""))
@@ -268,6 +301,45 @@ def read_esphome_power_watts():
     if watts < 0:
         raise RuntimeError(f"esphome power payload had invalid negative watts: {watts}")
     return watts, {}, "esphome", True, extra
+
+
+def maybe_recover_solix_feed(reason, age_seconds=None):
+    if not SOLIX_AUTO_RECOVER:
+        return "auto-recovery disabled"
+
+    now_ts = time.time()
+    with SOLIX_RECOVERY_LOCK:
+        last_attempt_ts = float(SOLIX_RECOVERY_STATE.get("last_attempt_ts") or 0.0)
+        if (now_ts - last_attempt_ts) < SOLIX_RECOVERY_COOLDOWN_SECONDS:
+            wait_seconds = SOLIX_RECOVERY_COOLDOWN_SECONDS - (now_ts - last_attempt_ts)
+            return f"recovery cooldown active ({wait_seconds:.0f}s remaining)"
+        SOLIX_RECOVERY_STATE["last_attempt_ts"] = now_ts
+        SOLIX_RECOVERY_STATE["attempt_count"] = int(SOLIX_RECOVERY_STATE.get("attempt_count") or 0) + 1
+        attempt_count = SOLIX_RECOVERY_STATE["attempt_count"]
+
+    if attempt_count % SOLIX_RECOVERY_ESCALATE_EVERY == 0:
+        restart_units = ["bluetooth.service", "solix-monitor.service"]
+        mode_label = "restart bluetooth.service + solix-monitor.service"
+    else:
+        restart_units = ["solix-monitor.service"]
+        mode_label = "restart solix-monitor.service"
+
+    logging.warning("Solix feed recovery attempt #%d: %s (reason=%s)", attempt_count, mode_label, reason)
+    try:
+        for unit in restart_units:
+            subprocess.run(
+                ["systemctl", "restart", unit],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+        logging.warning("Solix feed recovery succeeded: %s", mode_label)
+        return f"auto-recovery attempted ({mode_label})"
+    except (OSError, subprocess.SubprocessError) as err:
+        age_label = "n/a" if age_seconds is None else f"{age_seconds:.1f}s"
+        logging.warning("Solix feed auto-recovery failed (age=%s, mode=%s): %s", age_label, mode_label, err)
+        return f"auto-recovery failed ({mode_label}): {err}"
 
 
 def read_rpi_power_watts():
@@ -555,17 +627,25 @@ def read_power_watts():
         try:
             if backend == "jtop":
                 watts, rails_watts, source = read_jtop_power_watts()
-                return watts, rails_watts, source, False, {}
+                return watts, rails_watts, source, False, {}, errors
             if backend == "nvidia-smi":
                 watts = read_nvidia_smi_watts()
-                return watts, {}, "nvidia-smi", False, {}
+                return watts, {}, "nvidia-smi", False, {}, errors
             if backend == "esphome":
-                return read_esphome_power_watts()
+                watts, rails, source, is_live, extra = read_esphome_power_watts()
+                return watts, rails, source, is_live, extra, errors
             if backend == "rpi":
-                return read_rpi_power_watts()
+                watts, rails, source, is_live, extra = read_rpi_power_watts()
+                return watts, rails, source, is_live, extra, errors
             errors.append(f"{backend}: unsupported backend")
         except (OSError, RuntimeError, subprocess.SubprocessError, ValueError, json.JSONDecodeError) as err:
-            errors.append(f"{backend}: {err}")
+            error_detail = f"{backend}: {err}"
+            if backend == "esphome":
+                err_text = str(err)
+                if "esphome solix reading stale by" not in err_text:
+                    recovery_note = maybe_recover_solix_feed(reason=f"esphome read failure: {err_text}")
+                    error_detail = f"{error_detail} ({recovery_note})"
+            errors.append(error_detail)
 
     raise RuntimeError(" | ".join(errors) if errors else "no telemetry backend available")
 
@@ -579,12 +659,14 @@ def sample_once():
     power_source = "fallback"
 
     try:
-        measured_server_watts, rails_watts, power_source, power_is_wall_total, extra = read_power_watts()
+        measured_server_watts, rails_watts, power_source, power_is_wall_total, extra, backend_errors = read_power_watts()
         next_state["measured_server_watts"] = measured_server_watts
         next_state["measured_gpu_watts"] = measured_server_watts
         next_state["power_rails_watts"] = rails_watts
         next_state["power_backend"] = power_source
         next_state.update(extra)
+        if backend_errors:
+            error_parts.append(f"power-backends: {' | '.join(backend_errors)}")
     except (OSError, RuntimeError, subprocess.SubprocessError, ValueError, json.JSONDecodeError) as err:
         error_parts.append(f"power: {err}")
 
@@ -639,8 +721,8 @@ def sample_once():
             current["solix_effective_solar_w"] = _solar
 
         if measured_server_watts is not None:
-            current["power_reading_ts"] = current.get("solix_reading_ts") or time.time()
             if power_is_wall_total:
+                current["power_reading_ts"] = current.get("solix_reading_ts") or time.time()
                 wall_total_watts = measured_server_watts
                 current["measured_server_watts"] = None
                 current["measured_gpu_watts"] = None
@@ -663,6 +745,7 @@ def sample_once():
                 current["power_measurement_kind"] = "wall-total"
                 current["watts_is_live"] = True
             else:
+                current["power_reading_ts"] = time.time()
                 current["measured_server_watts"] = measured_server_watts
                 current["measured_gpu_watts"] = measured_server_watts
 
