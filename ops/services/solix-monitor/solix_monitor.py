@@ -120,7 +120,9 @@ def parse_tlv(data: bytes) -> dict:
         vb = payload[1:]
         if subtype == 0x01 and len(vb) == 1:
             entries[tag] = vb[0]
-        elif subtype in (0x02, 0x03) and len(vb) == 2:
+        elif subtype == 0x02 and len(vb) == 2:
+            entries[tag] = int.from_bytes(vb, "little")
+        elif subtype == 0x03 and len(vb) == 4:
             entries[tag] = int.from_bytes(vb, "little")
     return entries
 
