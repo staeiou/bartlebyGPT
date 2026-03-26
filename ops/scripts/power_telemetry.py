@@ -772,6 +772,9 @@ def sample_once():
                 current["cost_share_fraction"] = 1.0
                 current["power_measurement_kind"] = "component-load"
                 current["watts_is_live"] = False
+        else:
+            current["watts_is_live"] = False
+            current["power_measurement_kind"] = "unavailable"
 
         current["is_active"] = current["requests_running"] > 0
         current["timestamp"] = time.time()
