@@ -287,7 +287,10 @@ install_solix_monitor() {
     "${SUDO[@]}" python3 -m venv "${venv}"
   fi
   "${SUDO[@]}" "${venv}/bin/pip" install --upgrade pip
-  "${SUDO[@]}" "${venv}/bin/pip" install --upgrade bleak bleak-retry-connector SolixBLE
+  "${SUDO[@]}" "${venv}/bin/pip" install --upgrade bleak bleak-retry-connector
+  if ! "${SUDO[@]}" "${venv}/bin/pip" install --upgrade SolixBLE; then
+    log "SolixBLE not available for this venv interpreter; continuing in TLV-only mode"
+  fi
 
   local tmp_unit
   tmp_unit="$(mktemp)"

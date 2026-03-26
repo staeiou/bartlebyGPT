@@ -21,7 +21,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from bleak import BleakClient, BleakScanner
-from SolixBLE.devices.c300dc import C300DC
+try:
+    from SolixBLE.devices.c300dc import C300DC
+    SOLIXBLE_IMPORT_ERROR = ""
+except Exception as err:
+    C300DC = None
+    SOLIXBLE_IMPORT_ERROR = str(err)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -121,6 +126,7 @@ def parse_tlv(data: bytes) -> dict:
 
 
 def on_tlv_notify(sender, data: bytes):
+    log.info("RAW %s", data.hex())
     e = parse_tlv(data)
     update_state(
         soc=e.get(0xB7), temp_c=e.get(0xB5), voltage_mv=e.get(0xAF),
@@ -163,6 +169,9 @@ def make_ecdh_callback(solix):
 
 
 async def run_ecdh(dev):
+    if C300DC is None:
+        log.warning("ECDH path unavailable: SolixBLE import failed (%s)", SOLIXBLE_IMPORT_ERROR)
+        return
     log.info("Protocol: ECDH encrypted")
     solix = C300DC(dev)
     solix.add_callback(make_ecdh_callback(solix))
@@ -218,6 +227,12 @@ async def probe_firmware(dev) -> str:
                 await asyncio.wait_for(got_packet.wait(), timeout=PROBE_TIMEOUT)
                 return "tlv"
             except asyncio.TimeoutError:
+                if C300DC is None:
+                    log.warning(
+                        "ECDH probe timed out but SolixBLE is unavailable (%s); falling back to TLV",
+                        SOLIXBLE_IMPORT_ERROR,
+                    )
+                    return "tlv"
                 return "ecdh"
     except Exception as exc:
         log.warning("Probe connection failed (%s), assuming ecdh", exc)
@@ -288,13 +303,19 @@ def ble_thread():
 
 def csv_logger_loop():
     CSV_DIR.mkdir(parents=True, exist_ok=True)
+    last_logged_ts = None
     while True:
         time.sleep(CSV_INTERVAL)
         with STATE_LOCK:
             if STATE["timestamp"] is None:
                 continue
+            if not STATE.get("ble_connected", False):
+                continue
+            if last_logged_ts is not None and STATE["timestamp"] <= last_logged_ts:
+                continue
+            reading_ts = float(STATE["timestamp"])
             row = {k: STATE.get(k) for k in CSV_FIELDS}
-        ts = datetime.fromtimestamp(row["timestamp"], tz=timezone.utc)
+        ts = datetime.fromtimestamp(reading_ts, tz=timezone.utc)
         row["timestamp"] = ts.isoformat()
         csv_path = CSV_DIR / f"solix-{ts.strftime('%Y-%m-%d')}.csv"
         write_header = not csv_path.exists() or csv_path.stat().st_size == 0
@@ -303,6 +324,7 @@ def csv_logger_loop():
             if write_header:
                 writer.writeheader()
             writer.writerow(row)
+        last_logged_ts = reading_ts
         log.debug("CSV: wrote row to %s", csv_path)
 
 
