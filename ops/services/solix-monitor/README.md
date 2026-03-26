@@ -2,6 +2,23 @@
 
 Repo-native Anker Solix C300X DC BLE monitor service.
 
+## Source Of Truth And Deployment
+
+- Source file to edit: `ops/services/solix-monitor/solix_monitor.py` (repo).
+- Runtime file used by service: `/opt/bartleby/solix-monitor/solix_monitor.py`.
+- Do not edit `/opt/bartleby/solix-monitor/solix_monitor.py` directly.
+- Deploy repo changes to runtime via the idempotent bootstrap script:
+
+```bash
+cd /path/to/bartlebyGPT
+sudo ./ops/bootstrap/bootstrap_fresh_box.sh \
+  --profile api-jetson \
+  --force-solix-monitor \
+  --skip-cloudflared \
+  --skip-inference-bootstrap \
+  --skip-doctor
+```
+
 Provides:
 
 - `/health`

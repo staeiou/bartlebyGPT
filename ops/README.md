@@ -3,6 +3,13 @@
 This directory is the internal deployment/operations source of truth for BartlebyGPT.
 Nothing here is served to end users.
 
+## Source Of Truth And Deploy Rules
+
+- Edit code in repo paths only (under `bartlebyGPT/`).
+- Treat `/opt/bartleby/*` and `/var/www/bartlebygpt` as deploy outputs.
+- Apply changes with idempotent scripts, not manual file copies into `/opt`.
+- For Solix monitor updates, rerun `ops/bootstrap/bootstrap_fresh_box.sh` so `/opt` is regenerated from repo.
+
 ## Scope
 
 - bootstrap scripts for hardware-specific bring-up
@@ -54,6 +61,18 @@ cd /path/to/bartlebyGPT
 sudo ./ops/bootstrap/bootstrap_fresh_box.sh \
   --profile api-jetson \
   --secrets-file /root/bartleby-secrets.env
+```
+
+Fast idempotent apply for Solix monitor code/config changes:
+
+```bash
+cd /path/to/bartlebyGPT
+sudo ./ops/bootstrap/bootstrap_fresh_box.sh \
+  --profile api-jetson \
+  --force-solix-monitor \
+  --skip-cloudflared \
+  --skip-inference-bootstrap \
+  --skip-doctor
 ```
 
 Example secrets file:
