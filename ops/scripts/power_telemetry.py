@@ -116,7 +116,7 @@ STATE = {
 JTOP_POWER_SERVICE = None
 JTOP_IMPORT_ERROR = ""
 HISTORY_LOCK = threading.Lock()
-HISTORY_CACHE = {"generated_at": 0.0, "payload": None}
+HISTORY_CACHE = {"generated_at": 0.0, "payload": None, "refreshing": False, "last_error": ""}
 SOLIX_RECOVERY_LOCK = threading.Lock()
 SOLIX_RECOVERY_STATE = {"last_attempt_ts": 0.0, "attempt_count": 0}
 
@@ -579,23 +579,69 @@ def compute_history_payload(now_ts=None):
     }
 
 
+def refresh_history_payload(now_ts=None):
+    current_ts = float(now_ts if now_ts is not None else time.time())
+    try:
+        payload = compute_history_payload(now_ts=current_ts)
+    except Exception as err:
+        with HISTORY_LOCK:
+            HISTORY_CACHE["refreshing"] = False
+            HISTORY_CACHE["last_error"] = str(err)
+        logging.warning("history refresh failed: %s", err)
+        raise
+
+    with HISTORY_LOCK:
+        HISTORY_CACHE["generated_at"] = current_ts
+        HISTORY_CACHE["payload"] = payload
+        HISTORY_CACHE["refreshing"] = False
+        HISTORY_CACHE["last_error"] = ""
+    return payload
+
+
+def _history_refresh_worker():
+    try:
+        refresh_history_payload()
+    except Exception:
+        return
+
+
+def start_history_refresh(force=False):
+    now_ts = time.time()
+    with HISTORY_LOCK:
+        cached = HISTORY_CACHE.get("payload")
+        generated_at = float(HISTORY_CACHE.get("generated_at") or 0.0)
+        if HISTORY_CACHE.get("refreshing"):
+            return False
+        if (
+            not force
+            and cached is not None
+            and (now_ts - generated_at) < HISTORY_CACHE_TTL_SECONDS
+        ):
+            return False
+        HISTORY_CACHE["refreshing"] = True
+
+    thread = threading.Thread(target=_history_refresh_worker, daemon=True)
+    thread.start()
+    return True
+
+
 def get_history_payload(force_refresh=False):
     now_ts = time.time()
     with HISTORY_LOCK:
         cached = HISTORY_CACHE.get("payload")
         generated_at = float(HISTORY_CACHE.get("generated_at") or 0.0)
-        if (
-            not force_refresh
-            and cached is not None
+        is_fresh = (
+            cached is not None
             and (now_ts - generated_at) < HISTORY_CACHE_TTL_SECONDS
-        ):
+        )
+        if not force_refresh and is_fresh:
             return cached
 
-    payload = compute_history_payload(now_ts=now_ts)
-    with HISTORY_LOCK:
-        HISTORY_CACHE["generated_at"] = now_ts
-        HISTORY_CACHE["payload"] = payload
-    return payload
+    if cached is not None:
+        start_history_refresh(force=True)
+        return cached
+
+    return refresh_history_payload(now_ts=now_ts)
 
 
 def power_backends_in_order():
@@ -858,6 +904,10 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     thread = threading.Thread(target=sampler_loop, daemon=True)
     thread.start()
+    try:
+        refresh_history_payload()
+    except Exception:
+        pass
 
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     server.serve_forever()
