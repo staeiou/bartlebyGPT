@@ -1010,6 +1010,7 @@ ${charts}
       state.powerHistory = payload;
       state.powerHistoryAvailable = true;
       state.powerHistoryLastFetchedAt = Date.now();
+      void loadEcharts().catch(() => {});
       updatePowerDisplay(state.busy);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err || "unknown error");
