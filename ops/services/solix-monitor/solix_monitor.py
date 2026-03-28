@@ -23,6 +23,14 @@ from pathlib import Path
 
 from bleak import BleakClient, BleakScanner
 try:
+    from bleak_retry_connector import BleakClientWithServiceCache, establish_connection, get_device
+    RETRY_CONNECTOR_IMPORT_ERROR = ""
+except Exception as err:
+    BleakClientWithServiceCache = None
+    establish_connection = None
+    get_device = None
+    RETRY_CONNECTOR_IMPORT_ERROR = str(err)
+try:
     from SolixBLE.devices.c300dc import C300DC
     SOLIXBLE_IMPORT_ERROR = ""
 except Exception as err:
@@ -51,6 +59,7 @@ CSV_DIR       = Path(os.environ.get("SOLIX_CSV_DIR", str(Path(__file__).parent /
 CSV_INTERVAL  = float(os.environ.get("SOLIX_CSV_INTERVAL", "60"))
 CAPACITY_WH   = float(os.environ.get("SOLIX_CAPACITY_WH", "288"))
 RECONNECT_DELAY = float(os.environ.get("SOLIX_RECONNECT_DELAY", "10"))
+SCAN_TIMEOUT = max(2.0, float(os.environ.get("SOLIX_SCAN_TIMEOUT", "10")))
 HISTORY_DB_PATH = os.environ.get("SOLIX_HISTORY_DB_PATH", "").strip()
 
 NOTIFY_CHAR   = "8c850003-0302-41c5-b46e-cf057c562025"
@@ -172,13 +181,37 @@ def on_tlv_notify(sender, data: bytes):
 
 async def run_tlv(dev):
     log.info("Protocol: plaintext TLV")
-    async with BleakClient(dev, timeout=15.0) as client:
+    if establish_connection is not None and BleakClientWithServiceCache is not None:
+        client = await establish_connection(
+            BleakClientWithServiceCache,
+            dev,
+            "solix-monitor-tlv",
+            max_attempts=4,
+        )
+    else:
+        if RETRY_CONNECTOR_IMPORT_ERROR:
+            log.warning("bleak-retry-connector unavailable, falling back to raw BleakClient (%s)", RETRY_CONNECTOR_IMPORT_ERROR)
+        client = BleakClient(dev, timeout=15.0)
+        await client.connect()
+
+    try:
         with STATE_LOCK:
             STATE["ble_connected"] = True
             STATE["last_error"] = ""
         await client.start_notify(NOTIFY_CHAR, on_tlv_notify)
         while client.is_connected:
             await asyncio.sleep(1.0)
+    finally:
+        try:
+            if client.is_connected:
+                await client.stop_notify(NOTIFY_CHAR)
+        except Exception:
+            pass
+        try:
+            if client.is_connected:
+                await client.disconnect()
+        except Exception:
+            pass
     log.warning("TLV connection dropped.")
 
 
@@ -272,6 +305,28 @@ async def probe_firmware(dev) -> str:
         return "ecdh"
 
 
+async def find_solix_device():
+    address = BLE_ADDR.upper()
+
+    if get_device is not None:
+        try:
+            dev = await get_device(address)
+            if dev is not None:
+                return dev
+        except Exception as exc:
+            log.debug("cached device lookup failed for %s: %s", address, exc)
+
+    try:
+        dev = await BleakScanner.find_device_by_address(address, timeout=SCAN_TIMEOUT)
+        if dev is not None:
+            return dev
+    except Exception as exc:
+        log.warning("address-targeted scan failed for %s: %s", address, exc)
+
+    devices = await BleakScanner.discover(timeout=SCAN_TIMEOUT)
+    return next((d for d in devices if d.address.upper() == address), None)
+
+
 # ---------------------------------------------------------------------------
 # Main BLE loop
 # ---------------------------------------------------------------------------
@@ -284,8 +339,7 @@ async def ble_loop():
     while True:
         try:
             log.info("Scanning for Solix %s ...", BLE_ADDR)
-            devices = await BleakScanner.discover(timeout=30.0)
-            dev = next((d for d in devices if d.address.upper() == BLE_ADDR.upper()), None)
+            dev = await find_solix_device()
             if dev is None:
                 log.warning("Device %s not found in scan, retrying in %ss", BLE_ADDR, RECONNECT_DELAY)
                 with STATE_LOCK:
