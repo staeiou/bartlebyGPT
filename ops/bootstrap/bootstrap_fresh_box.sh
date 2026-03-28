@@ -268,6 +268,7 @@ install_solix_monitor() {
 
   local workdir="${SOLIX_MONITOR_WORKDIR:-/opt/bartleby/solix-monitor}"
   local logs_dir="${SOLIX_CSV_DIR:-${workdir}/logs}"
+  local history_db_path="${SOLIX_HISTORY_DB_PATH:-${logs_dir}/history.sqlite3}"
   local ble_addr="${SOLIX_BLE_ADDR:-F4:9D:8A:83:D3:24}"
   local host="${SOLIX_HOST:-127.0.0.1}"
   local port="${SOLIX_PORT:-18082}"
@@ -278,10 +279,11 @@ install_solix_monitor() {
 
   log "Installing Solix monitor service"
 
-  "${SUDO[@]}" mkdir -p "${workdir}" "${logs_dir}"
+  "${SUDO[@]}" mkdir -p "${workdir}" "${logs_dir}" "$(dirname "${history_db_path}")"
   "${SUDO[@]}" cp "${OPS_DIR}/services/solix-monitor/solix_monitor.py" "${workdir}/solix_monitor.py"
+  "${SUDO[@]}" cp "${OPS_DIR}/history_store.py" "${workdir}/history_store.py"
   "${SUDO[@]}" chmod 0755 "${workdir}/solix_monitor.py"
-  "${SUDO[@]}" chown -R "${solix_user}:${solix_user}" "${workdir}" "${logs_dir}"
+  "${SUDO[@]}" chown -R "${solix_user}:${solix_user}" "${workdir}" "${logs_dir}" "$(dirname "${history_db_path}")"
 
   if [[ ! -x "${venv}/bin/python" ]]; then
     "${SUDO[@]}" python3 -m venv "${venv}"
@@ -306,6 +308,7 @@ install_solix_monitor() {
     "SOLIX_PORT=${port}" \
     "SOLIX_CSV_DIR=${logs_dir}" \
     "SOLIX_CSV_INTERVAL=${csv_interval}" \
+    "SOLIX_HISTORY_DB_PATH=${history_db_path}" \
     "SOLIX_CAPACITY_WH=${capacity_wh}" \
     "SOLIX_RECONNECT_DELAY=${reconnect_delay}"
 

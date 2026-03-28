@@ -14,6 +14,7 @@ import csv
 import json
 import logging
 import os
+import sys
 import threading
 import time
 from datetime import datetime, timezone
@@ -34,6 +35,15 @@ logging.basicConfig(
 )
 log = logging.getLogger("solix-monitor")
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+OPS_DIR = Path(__file__).resolve().parents[2] if len(Path(__file__).resolve().parents) > 2 else SCRIPT_DIR
+for candidate in (SCRIPT_DIR, OPS_DIR):
+    candidate_str = str(candidate)
+    if candidate_str not in sys.path:
+        sys.path.insert(0, candidate_str)
+
+from history_store import SQLiteHistoryStore
+
 BLE_ADDR      = os.environ.get("SOLIX_BLE_ADDR", "F4:9D:8A:83:D3:24")
 HOST          = os.environ.get("SOLIX_HOST", "127.0.0.1")
 PORT          = int(os.environ.get("SOLIX_PORT", "18082"))
@@ -41,6 +51,7 @@ CSV_DIR       = Path(os.environ.get("SOLIX_CSV_DIR", str(Path(__file__).parent /
 CSV_INTERVAL  = float(os.environ.get("SOLIX_CSV_INTERVAL", "60"))
 CAPACITY_WH   = float(os.environ.get("SOLIX_CAPACITY_WH", "288"))
 RECONNECT_DELAY = float(os.environ.get("SOLIX_RECONNECT_DELAY", "10"))
+HISTORY_DB_PATH = os.environ.get("SOLIX_HISTORY_DB_PATH", "").strip()
 
 NOTIFY_CHAR   = "8c850003-0302-41c5-b46e-cf057c562025"
 PROBE_TIMEOUT = 8.0   # seconds to wait for plaintext TLV before assuming ECDH
@@ -64,6 +75,11 @@ STATE = {
 }
 
 _SOLIX_DEFAULT = -1
+try:
+    HISTORY_DB = SQLiteHistoryStore(HISTORY_DB_PATH) if HISTORY_DB_PATH else None
+except Exception as err:  # pragma: no cover - startup environment guard
+    HISTORY_DB = None
+    log.warning("history sqlite disabled: %s", err)
 
 
 def _v(val):
@@ -80,10 +96,11 @@ def update_state(*, soc, temp_c, voltage_mv, solar_w, total_in,
     hours_remaining = None
     if soc is not None and total_out is not None and total_out > 0:
         hours_remaining = round((soc / 100.0) * CAPACITY_WH / total_out, 2)
+    reading_ts = time.time()
     with STATE_LOCK:
         prev_b6 = STATE.get("charging_status")
         STATE.update({
-            "timestamp": time.time(),
+            "timestamp": reading_ts,
             "soc_pct": soc, "temp_c": temp_c, "temp_f": temp_f,
             "voltage_mv": voltage_mv,
             "solar_input_w": solar_w, "total_input_w": total_in,
@@ -93,6 +110,20 @@ def update_state(*, soc, temp_c, voltage_mv, solar_w, total_in,
             "ble_connected": True, "last_error": "",
             "charging_status": charging_status,
         })
+    if HISTORY_DB is not None:
+        try:
+            HISTORY_DB.record_solix_event(
+                reading_ts=reading_ts,
+                load_w=total_out,
+                charge_w=total_in,
+                soc_pct=soc,
+                solar_input_w=solar_w,
+                voltage_mv=voltage_mv,
+                temp_c=temp_c,
+                charging_status=charging_status,
+            )
+        except Exception as err:
+            log.warning("history sqlite write failed: %s", err)
     if charging_status != prev_b6:
         log.info("0xb6 charging_status changed: %s -> %s (soc=%s solar_w=%s total_out=%s)",
                  prev_b6, charging_status, soc, solar_w, total_out)

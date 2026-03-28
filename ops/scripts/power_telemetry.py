@@ -7,13 +7,22 @@ import math
 import os
 import re
 import subprocess
+import sys
 import threading
 import time
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.error import URLError
 from urllib.parse import parse_qs, urljoin, urlparse
 from urllib.request import urlopen
+
+
+OPS_DIR = Path(__file__).resolve().parents[1]
+if str(OPS_DIR) not in sys.path:
+    sys.path.insert(0, str(OPS_DIR))
+
+from history_store import SQLiteHistoryStore
 
 
 def env_bool(name, default=False):
@@ -48,6 +57,7 @@ SOLIX_RECOVERY_ESCALATE_EVERY = max(
 )
 SOLIX_LOG_DIR = os.environ.get("TELEMETRY_SOLIX_LOG_DIR", "/opt/bartleby/solix-monitor/logs").strip()
 VLLM_LOG_DIR = os.environ.get("TELEMETRY_VLLM_LOG_DIR", "").strip()
+HISTORY_DB_PATH = os.environ.get("TELEMETRY_HISTORY_DB_PATH", "").strip()
 HISTORY_CACHE_TTL_SECONDS = max(
     10.0, float(os.environ.get("TELEMETRY_HISTORY_CACHE_TTL_SECONDS", "600"))
 )
@@ -119,6 +129,11 @@ HISTORY_LOCK = threading.Lock()
 HISTORY_CACHE = {"generated_at": 0.0, "payload": None, "refreshing": False, "last_error": ""}
 SOLIX_RECOVERY_LOCK = threading.Lock()
 SOLIX_RECOVERY_STATE = {"last_attempt_ts": 0.0, "attempt_count": 0}
+try:
+    HISTORY_DB = SQLiteHistoryStore(HISTORY_DB_PATH) if HISTORY_DB_PATH else None
+except Exception as err:  # pragma: no cover - startup environment guard
+    HISTORY_DB = None
+    logging.warning("history sqlite disabled: %s", err)
 
 try:
     from jtop.core.power import PowerService
@@ -193,6 +208,16 @@ def read_jtop_power_watts():
 
 
 def log_vllm_metrics(ts, requests_running, requests_waiting, requests_completed):
+    if HISTORY_DB is not None:
+        try:
+            HISTORY_DB.record_vllm_sample(
+                sample_ts=ts,
+                requests_running=requests_running,
+                requests_waiting=requests_waiting,
+                requests_completed=requests_completed,
+            )
+        except Exception as err:
+            logging.warning("vllm metrics sqlite write failed: %s", err)
     if not VLLM_LOG_DIR:
         return
     date_str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
@@ -549,6 +574,17 @@ def build_binned_window(rows, start_ts, end_ts, bin_seconds, vllm_rows=None):
 
 def compute_history_payload(now_ts=None):
     now_ts = float(now_ts if now_ts is not None else time.time())
+    if HISTORY_DB is not None:
+        payload = HISTORY_DB.build_history_payload(
+            now_ts=now_ts,
+            lookback_days=HISTORY_LOOKBACK_DAYS,
+            bin_24h_seconds=HISTORY_24H_BIN_SECONDS,
+            bin_7d_seconds=HISTORY_7D_BIN_SECONDS,
+        )
+        if int(payload.get("solix_rows_considered") or 0) > 0:
+            payload["cache_ttl_seconds"] = int(HISTORY_CACHE_TTL_SECONDS)
+            return payload
+
     rows = read_solix_rows(now_ts)
     vllm_rows = read_vllm_rows(now_ts)
 
@@ -573,10 +609,35 @@ def compute_history_payload(now_ts=None):
         "cache_ttl_seconds": int(HISTORY_CACHE_TTL_SECONDS),
         "lookback_days": HISTORY_LOOKBACK_DAYS,
         "source": "solix_csv",
+        "bin_statistic": "mean",
         "rows_considered": len(rows),
         "history_24h": window_24h,
         "history_7d": window_7d,
     }
+
+
+def bootstrap_history_db(now_ts=None):
+    if HISTORY_DB is None:
+        return
+
+    now_ts = float(now_ts if now_ts is not None else time.time())
+    start_ts = now_ts - (HISTORY_LOOKBACK_DAYS * 86400.0)
+    end_ts = now_ts + 60.0
+
+    try:
+        solix_count = HISTORY_DB.count_solix_rows(start_ts, end_ts)
+        if solix_count <= 0:
+            rows = read_solix_rows(now_ts)
+            imported = HISTORY_DB.import_solix_rows(rows)
+            logging.info("bootstrapped sqlite history with %d Solix CSV rows", imported)
+
+        vllm_count = HISTORY_DB.count_vllm_rows(start_ts, end_ts)
+        if vllm_count <= 0 and VLLM_LOG_DIR:
+            rows = read_vllm_rows(now_ts)
+            imported = HISTORY_DB.import_vllm_rows(rows)
+            logging.info("bootstrapped sqlite history with %d vLLM CSV rows", imported)
+    except Exception as err:  # pragma: no cover - startup environment guard
+        logging.warning("history sqlite bootstrap failed: %s", err)
 
 
 def refresh_history_payload(now_ts=None):
@@ -904,6 +965,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     thread = threading.Thread(target=sampler_loop, daemon=True)
     thread.start()
+    bootstrap_history_db()
     try:
         refresh_history_payload()
     except Exception:

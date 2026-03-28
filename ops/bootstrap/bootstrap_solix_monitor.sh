@@ -35,6 +35,7 @@ SOLIX_USER="${SOLIX_USER:-$(logname 2>/dev/null || echo "${SUDO_USER:-$USER}")}"
 SOLIX_INSTALL_DIR="${SOLIX_INSTALL_DIR:-$(eval echo "~${SOLIX_USER}/solix-monitor")}"
 SOLIX_PORT="${SOLIX_PORT:-18082}"
 SOLIX_CSV_INTERVAL="${SOLIX_CSV_INTERVAL:-60}"
+SOLIX_HISTORY_DB_PATH="${SOLIX_HISTORY_DB_PATH:-${SOLIX_INSTALL_DIR}/logs/history.sqlite3}"
 SOLIX_CAPACITY_WH="${SOLIX_CAPACITY_WH:-288}"
 SERVICE_NAME="${SERVICE_NAME:-solix-monitor}"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
@@ -53,6 +54,7 @@ $SUDO pip install bleak bleak-retry-connector SolixBLE --break-system-packages -
 echo "==> Installing solix_monitor.py to ${SOLIX_INSTALL_DIR}..."
 $SUDO mkdir -p "${SOLIX_INSTALL_DIR}/logs"
 $SUDO cp "${REPO_ROOT}/ops/services/solix-monitor/solix_monitor.py" "${SOLIX_INSTALL_DIR}/solix_monitor.py"
+$SUDO cp "${REPO_ROOT}/ops/history_store.py" "${SOLIX_INSTALL_DIR}/history_store.py"
 $SUDO chown -R "${SOLIX_USER}:${SOLIX_USER}" "${SOLIX_INSTALL_DIR}"
 
 # ---- systemd unit -----------------------------------------------------------
@@ -78,6 +80,7 @@ Environment=SOLIX_HOST=127.0.0.1
 Environment=SOLIX_PORT=${SOLIX_PORT}
 Environment=SOLIX_CSV_DIR=${SOLIX_INSTALL_DIR}/logs
 Environment=SOLIX_CSV_INTERVAL=${SOLIX_CSV_INTERVAL}
+Environment=SOLIX_HISTORY_DB_PATH=${SOLIX_HISTORY_DB_PATH}
 Environment=SOLIX_CAPACITY_WH=${SOLIX_CAPACITY_WH}
 
 [Install]

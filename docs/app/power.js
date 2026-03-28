@@ -221,8 +221,19 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
     };
   }
 
+  function getHistorySeriesLabels() {
+    const statistic = state.powerHistory && state.powerHistory.bin_statistic === "median"
+      ? "median"
+      : "mean";
+    return {
+      concurrent: statistic === "median" ? "Median Concurrent" : "Avg Concurrent",
+      queued: statistic === "median" ? "Median Queued" : "Queued",
+    };
+  }
+
   function buildHistoryChartOption(points, mode) {
     const series = historyPointsToSeries(points);
+    const labels = getHistorySeriesLabels();
     const is24h = mode === "24h";
     const lineWidth = 1.2;
     const isNarrow = window.innerWidth < 540;
@@ -261,7 +272,13 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
         trigger: "axis",
         axisPointer: { type: "cross" },
         formatter(params) {
-          const units = { "Load": "W", "Charge": "W", "State of Charge": "%", "Avg Concurrent": " chats", "Queued": " chats" };
+          const units = {
+            "Load": "W",
+            "Charge": "W",
+            "State of Charge": "%",
+            [labels.concurrent]: " chats",
+            [labels.queued]: " chats",
+          };
           const header = params[0] ? `<strong>${params[0].axisValueLabel}</strong><br>` : "";
           const rows = params.map((p) => {
             const raw = p.value && p.value[1];
@@ -383,7 +400,7 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
           data: series.soc,
         },
         {
-          name: "Avg Concurrent",
+          name: labels.concurrent,
           type: "line",
           yAxisIndex: 2,
           showSymbol: false,
@@ -393,7 +410,7 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
           data: series.requests,
         },
         {
-          name: "Queued",
+          name: labels.queued,
           type: "line",
           yAxisIndex: 2,
           showSymbol: false,
@@ -428,6 +445,7 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
       const lastTs = points.length ? points[points.length - 1].ts : "";
       const optionKey = [
         state.powerHistory && state.powerHistory.generated_at_iso ? state.powerHistory.generated_at_iso : "",
+        state.powerHistory && state.powerHistory.bin_statistic ? state.powerHistory.bin_statistic : "",
         points.length,
         firstTs,
         lastTs,
@@ -471,6 +489,7 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
       state.powerHistoryAvailable ? "1" : "0",
       state.powerHistoryInFlight ? "1" : "0",
       history && history.generated_at_iso ? history.generated_at_iso : "",
+      history && history.bin_statistic ? history.bin_statistic : "",
       history && Number.isFinite(Number(history.rows_considered)) ? Number(history.rows_considered) : "",
       history && history.history_24h && Array.isArray(history.history_24h.points) ? history.history_24h.points.length : 0,
       history && history.history_7d && Array.isArray(history.history_7d.points) ? history.history_7d.points.length : 0,
@@ -481,6 +500,7 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
     }
 
     const generatedAt = hasHistory ? formatHistoryGeneratedAt(history.generated_at_iso) : "";
+    const labels = getHistorySeriesLabels();
     const rows = hasHistory && Number.isFinite(Number(history.rows_considered))
       ? Number(history.rows_considered)
       : null;
@@ -506,8 +526,8 @@ ${statusLine ? `<p class="power-history-status">${escapeHtml(statusLine)}</p>` :
 <span><i class="power-history-key is-load"></i>Load</span>
 <span><i class="power-history-key is-charge"></i>Charge</span>
 <span><i class="power-history-key is-soc"></i>State of Charge</span>
-<span><i class="power-history-key is-concurrent"></i>Avg Concurrent</span>
-<span><i class="power-history-key is-queued"></i>Queued</span>
+<span><i class="power-history-key is-concurrent"></i>${escapeHtml(labels.concurrent)}</span>
+<span><i class="power-history-key is-queued"></i>${escapeHtml(labels.queued)}</span>
 </p>
 <div class="power-history-grid">
 ${charts}
