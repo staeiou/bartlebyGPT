@@ -12,6 +12,12 @@ It is written for a fresh coding agent. Do not assume this work is deployed just
 - The branch has **not** been fully deployed to the running services yet.
 - A live SQLite DB **has** already been populated from existing CSV history at:
   - `/opt/bartleby/solix-monitor/logs/history.sqlite3`
+- Since the first version of this document was written, the live Solix BLE path was stabilized separately:
+  - telemetry-driven Solix auto-recovery was disabled
+  - `solix-monitor` reconnect logic was improved and deployed
+- Since then, the live history endpoint has also been verified serving from SQLite:
+  - `/telemetry/history` now returns `source = "sqlite_history"`
+  - `/telemetry/history` now returns `bin_statistic = "median"`
 
 ## What Is Wrong With The Old History System
 
@@ -135,16 +141,55 @@ This is the important part:
 
 - branch code exists
 - branch code has been reviewed and locally validated
-- branch code is **not yet fully deployed** to the running host services
+- branch code is now deployed enough that the live history endpoint is serving SQLite-backed median history
 
 What is live now:
 
-- the old deployed services are still what systemd is running unless explicitly redeployed after this branch work
-- however, the SQLite DB file has already been created and populated with imported legacy CSV history
+- the SQLite DB file has already been created and populated with imported legacy CSV history
+- the live Solix service has since been redeployed for BLE stabilization work:
+  - reconnect path now uses targeted lookup and `bleak-retry-connector`
+  - telemetry auto-recovery is currently disabled in the active Jetson profile
+- the live history endpoint is now verified serving SQLite history
+- the deployed frontend already understands `bin_statistic` labels and matches the repo version
 
 Live imported DB path:
 
 - `/opt/bartleby/solix-monitor/logs/history.sqlite3`
+
+### Important Current Operational State
+
+The old Solix BLE/TLV path was dropping on its own, and telemetry auto-recovery was making it worse by restarting `solix-monitor.service` and `bluetooth.service` near the `45s` stale threshold.
+
+That interaction was stabilized by:
+
+- setting `TELEMETRY_SOLIX_AUTO_RECOVER=0`
+- deploying a narrower reconnect path in `solix_monitor.py`
+
+Observed reconnect improvement after that deploy:
+
+- old reconnect path: often `40s+`
+- stabilized reconnect path: about `12-14s` in observed live cycles
+
+But:
+
+- TLV drops still happen
+- the transport problem is improved, not solved
+- do not re-enable aggressive telemetry-driven recovery blindly
+
+### Current Verified Live History State
+
+Verified directly on the host:
+
+- `/telemetry/history` returns:
+  - `source = "sqlite_history"`
+  - `bin_statistic = "median"`
+- the SQLite DB contains fresh Solix rows with timestamps near current wall time
+- recent 24h bins are aligned to wall-clock minutes such as:
+  - `2026-03-28T20:06:00+00:00`
+  - `2026-03-28T20:07:00+00:00`
+  - `2026-03-28T20:08:00+00:00`
+
+So the branch is no longer just a partial SQLite prototype; the median history path is live.
 
 ## Importer Status
 
@@ -240,31 +285,24 @@ Validated locally in this branch:
 - `/opt`-style packaging test for `solix_monitor.py` + `history_store.py`
 - live import into `/opt/bartleby/solix-monitor/logs/history.sqlite3`
 
-Not yet validated end-to-end:
+Validated end-to-end enough to claim cutover:
 
-- deployed `solix-monitor.service` writing live packet-level rows into SQLite
-- deployed `bartleby-stack.service` serving `/telemetry/history` from SQLite
-- live browser UI showing `bin_statistic=median` data
+- deployed `solix-monitor.service` is writing fresh rows into SQLite
+- deployed `bartleby-stack.service` is serving `/telemetry/history` from SQLite
+- deployed frontend JS matches repo and supports `bin_statistic`
 
 ## What A Fresh Agent Should Do Next
 
 If continuing this work, do these in order:
 
-1. Review branch diff and current worktree.
-2. Deploy the Solix service code from this branch.
-3. Restart `solix-monitor.service`.
-4. Deploy/restart `bartleby-stack.service`.
-5. Verify:
-   - `solix-monitor` is writing fresh rows into SQLite
-   - `/telemetry/history` returns:
-     - `source: "sqlite_history"`
-     - `bin_statistic: "median"`
-   - UI labels switch to median mode
-6. Check for regressions:
+1. Read [WORK_LOG_SOLIX_2026-03-28-1PM.md](/home/ubuntu/vllm_jetson/bartlebyGPT/WORK_LOG_SOLIX_2026-03-28-1PM.md).
+2. Confirm the live Solix BLE path is still stable enough after the reconnect patch.
+3. Check for regressions:
    - service startup/import failures
    - SQLite permission issues
    - history endpoint latency
    - missing or obviously wrong bins
+4. If the endpoint ever falls back to legacy CSV again, diagnose that before making further architecture claims.
 
 ## Suggested Verification Commands
 

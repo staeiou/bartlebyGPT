@@ -44,7 +44,25 @@ sudo systemctl restart solix-monitor
 | `SOLIX_HOST` | `127.0.0.1` | HTTP listen address |
 | `SOLIX_CSV_DIR` | `~/solix-monitor/logs` | CSV + firmware cache dir |
 | `SOLIX_CSV_INTERVAL` | `60` | Seconds between CSV rows |
+| `SOLIX_SCAN_TIMEOUT` | `10` | Timeout for targeted reconnect lookup / fallback scan |
 | `SOLIX_CAPACITY_WH` | `288` | Battery capacity for hours-remaining calc |
+
+## Reconnect Behavior
+
+Current repo behavior for TLV reconnects:
+
+- use `bleak-retry-connector` when available
+- try cached BlueZ lookup first
+- then `BleakScanner.find_device_by_address(...)`
+- only fall back to `BleakScanner.discover(...)` if necessary
+
+This replaced an older reconnect path that did a blunt `discover(timeout=30)` on every reconnect.
+
+Why this matters:
+
+- the older path made recovery slow
+- on the Jetson host it interacted badly with telemetry stale detection
+- the targeted reconnect path reduced observed recovery time substantially
 
 ## HTTP Endpoints
 
@@ -87,6 +105,12 @@ sudo systemctl restart solix-monitor
 ```
 If the battery was just power-cycled it can take ~30s to reappear in scans.
 
+Important on `api-jetson`:
+
+- do not let telemetry repeatedly restart `bluetooth.service` while Solix is already reconnecting
+- telemetry stale/recovery logic previously made the outage pattern worse
+- current operational preference is to keep telemetry-driven Solix auto-recovery disabled until transport behavior is better understood
+
 **Connected but `ble_connected: true`, all telemetry null**
 Likely a firmware mismatch — cached firmware type may be wrong. Delete `firmware_type.txt` and restart to re-probe.
 
@@ -105,3 +129,14 @@ Install (if setting up from scratch):
 ```bash
 pip install bleak bleak-retry-connector SolixBLE --break-system-packages
 ```
+
+## Current Jetson Notes
+
+On `api-jetson` as of `2026-03-28`:
+
+- plaintext TLV is still the live path
+- TLV disconnects still happen intermittently
+- reconnect behavior was improved by moving away from `discover(timeout=30)` loops
+- observed reconnect time improved to roughly `12-14s` in live tests after the reconnect patch
+
+This does not mean TLV disconnects are solved. It means the reconnect architecture is less pathological.
