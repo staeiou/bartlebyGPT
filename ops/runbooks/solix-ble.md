@@ -51,18 +51,37 @@ sudo systemctl restart solix-monitor
 
 Current repo behavior for TLV reconnects:
 
-- use `bleak-retry-connector` when available
-- try cached BlueZ lookup first
-- then `BleakScanner.find_device_by_address(...)`
+- use raw `BleakClient`
+- use `BleakScanner.find_device_by_address(...)` first
 - only fall back to `BleakScanner.discover(...)` if necessary
+- require at least one real packet before considering the session healthy
+- tear down the session if packet flow goes idle
+- after too many consecutive failures, exit the process and let `systemd` restart it
 
-This replaced an older reconnect path that did a blunt `discover(timeout=30)` on every reconnect.
+Current repo behavior for TLV notifications:
+
+- force BlueZ `StartNotify` by default via `SOLIX_FORCE_START_NOTIFY=1`
+- this intentionally avoids the default Bleak Linux preference for `AcquireNotify`
+
+Why:
+
+- the Solix notify characteristic supports `AcquireNotify`
+- Bleak on Linux prefers `AcquireNotify` on supported characteristics
+- upstream Bleak issue `#1885` documents `AcquireNotify` hitting `Unexpected EOF` and dropping the connection on some peripherals
+- the Solix outage investigation found that close enough to warrant forcing `StartNotify` as the current live experiment
+
+This replaced older paths that:
+
+- did a blunt `discover(timeout=30)` on every reconnect
+- used `bleak-retry-connector`
+- or relied on the default `AcquireNotify` behavior
 
 Why this matters:
 
-- the older path made recovery slow
-- on the Jetson host it interacted badly with telemetry stale detection
-- the targeted reconnect path reduced observed recovery time substantially
+- the older scan path made recovery slow
+- the retry-connector path likely contributed to the 15-hour packet-ingest outage
+- the default `AcquireNotify` path is now a specific upstream-known suspect
+- the current path is simpler and exposes packet health more explicitly
 
 ## HTTP Endpoints
 
@@ -97,6 +116,12 @@ cat ~/solix-monitor/logs/firmware_type.txt
 **`[org.bluez.Error.NotPermitted] Notify acquired` in logs**
 Another BLE client (e.g. Anker app on a phone) holds the notify slot. Disconnect the phone app and restart the service.
 
+**`AcquireNotify: Read error ... Unexpected EOF` or repeated BlueZ disconnects**
+Treat `AcquireNotify` as suspect first. The current repo/service default is to force `StartNotify` instead. If this error appears again, verify the deployed service is actually running:
+```bash
+sudo journalctl -u solix-monitor --since '15 minutes ago' --no-pager | rg 'notify_mode|AcquireNotify|StartNotify|RAW '
+```
+
 **`Device not found in scan` repeating**
 The battery may not be advertising. Check BT stack:
 ```bash
@@ -121,13 +146,12 @@ SolixBLE negotiation timed out. Usually a transient BLE stack issue. The service
 
 Installed on both Pi machines under the system Python:
 - `bleak` — BLE client
-- `bleak-retry-connector` — robust connection handling
 - `SolixBLE` (pip: `SolixBLE`, source: `flip-dots/SolixBLE`) — ECDH protocol for new firmware
 - `pycryptodome`, `cryptography` — pulled in by SolixBLE
 
 Install (if setting up from scratch):
 ```bash
-pip install bleak bleak-retry-connector SolixBLE --break-system-packages
+pip install bleak SolixBLE --break-system-packages
 ```
 
 ## Current Jetson Notes
@@ -136,7 +160,8 @@ On `api-jetson` as of `2026-03-28`:
 
 - plaintext TLV is still the live path
 - TLV disconnects still happen intermittently
-- reconnect behavior was improved by moving away from `discover(timeout=30)` loops
-- observed reconnect time improved to roughly `12-14s` in live tests after the reconnect patch
+- the current deployed service forces `StartNotify`
+- journal confirms `Starting plaintext TLV session (notify_mode=StartNotify).`
+- packet flow is live after deploy, but overnight burn-in is still required
 
-This does not mean TLV disconnects are solved. It means the reconnect architecture is less pathological.
+This does not mean TLV disconnects are solved. It means the current live experiment is now explicitly testing whether `StartNotify` is more stable than `AcquireNotify` for this Solix device on BlueZ.

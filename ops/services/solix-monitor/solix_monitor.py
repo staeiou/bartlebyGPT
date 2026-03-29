@@ -23,14 +23,6 @@ from pathlib import Path
 
 from bleak import BleakClient, BleakScanner
 try:
-    from bleak_retry_connector import BleakClientWithServiceCache, establish_connection, get_device
-    RETRY_CONNECTOR_IMPORT_ERROR = ""
-except Exception as err:
-    BleakClientWithServiceCache = None
-    establish_connection = None
-    get_device = None
-    RETRY_CONNECTOR_IMPORT_ERROR = str(err)
-try:
     from SolixBLE.devices.c300dc import C300DC
     SOLIXBLE_IMPORT_ERROR = ""
 except Exception as err:
@@ -61,6 +53,10 @@ CAPACITY_WH   = float(os.environ.get("SOLIX_CAPACITY_WH", "288"))
 RECONNECT_DELAY = float(os.environ.get("SOLIX_RECONNECT_DELAY", "10"))
 SCAN_TIMEOUT = max(2.0, float(os.environ.get("SOLIX_SCAN_TIMEOUT", "10")))
 HISTORY_DB_PATH = os.environ.get("SOLIX_HISTORY_DB_PATH", "").strip()
+FIRST_PACKET_TIMEOUT = max(3.0, float(os.environ.get("SOLIX_FIRST_PACKET_TIMEOUT", "12")))
+PACKET_IDLE_TIMEOUT = max(FIRST_PACKET_TIMEOUT, float(os.environ.get("SOLIX_PACKET_IDLE_TIMEOUT", "15")))
+PROCESS_RESET_AFTER_FAILURES = max(1, int(os.environ.get("SOLIX_PROCESS_RESET_AFTER_FAILURES", "30")))
+FORCE_START_NOTIFY = os.environ.get("SOLIX_FORCE_START_NOTIFY", "1").strip().lower() not in {"0", "false", "no", "off"}
 
 NOTIFY_CHAR   = "8c850003-0302-41c5-b46e-cf057c562025"
 PROBE_TIMEOUT = 8.0   # seconds to wait for plaintext TLV before assuming ECDH
@@ -81,6 +77,10 @@ STATE = {
     "hours_remaining": None, "ble_connected": False,
     "source": "solix-ble", "last_error": "", "firmware": None,
     "charging_status": None,
+}
+FAILURE_STATE = {
+    "consecutive_failures": 0,
+    "last_packet_wall_ts": 0.0,
 }
 
 _SOLIX_DEFAULT = -1
@@ -179,39 +179,46 @@ def on_tlv_notify(sender, data: bytes):
     )
 
 
-async def run_tlv(dev):
-    log.info("Protocol: plaintext TLV")
-    if establish_connection is not None and BleakClientWithServiceCache is not None:
-        client = await establish_connection(
-            BleakClientWithServiceCache,
-            dev,
-            "solix-monitor-tlv",
-            max_attempts=4,
-        )
-    else:
-        if RETRY_CONNECTOR_IMPORT_ERROR:
-            log.warning("bleak-retry-connector unavailable, falling back to raw BleakClient (%s)", RETRY_CONNECTOR_IMPORT_ERROR)
-        client = BleakClient(dev, timeout=15.0)
-        await client.connect()
+def notify_kwargs():
+    if FORCE_START_NOTIFY:
+        return {"bluez": {"use_start_notify": True}}
+    return {}
 
-    try:
-        with STATE_LOCK:
-            STATE["ble_connected"] = True
-            STATE["last_error"] = ""
-        await client.start_notify(NOTIFY_CHAR, on_tlv_notify)
+
+async def run_tlv(dev):
+    first_packet = asyncio.Event()
+    last_packet_mono = 0.0
+
+    def _notify(sender, data: bytes):
+        nonlocal last_packet_mono
+        last_packet_mono = time.monotonic()
+        if not first_packet.is_set():
+            first_packet.set()
+            log.info("TLV packet stream established.")
+        FAILURE_STATE["last_packet_wall_ts"] = time.time()
+        on_tlv_notify(sender, data)
+
+    log.info(
+        "Starting plaintext TLV session (notify_mode=%s).",
+        "StartNotify" if FORCE_START_NOTIFY else "AcquireNotify",
+    )
+    async with BleakClient(dev, timeout=15.0) as client:
+        await client.start_notify(NOTIFY_CHAR, _notify, **notify_kwargs())
+        try:
+            await asyncio.wait_for(first_packet.wait(), timeout=FIRST_PACKET_TIMEOUT)
+        except asyncio.TimeoutError as exc:
+            raise RuntimeError(
+                f"no TLV packets received within {FIRST_PACKET_TIMEOUT:.1f}s after subscribe"
+            ) from exc
+
         while client.is_connected:
             await asyncio.sleep(1.0)
-    finally:
-        try:
-            if client.is_connected:
-                await client.stop_notify(NOTIFY_CHAR)
-        except Exception:
-            pass
-        try:
-            if client.is_connected:
-                await client.disconnect()
-        except Exception:
-            pass
+            idle_seconds = time.monotonic() - last_packet_mono
+            if idle_seconds > PACKET_IDLE_TIMEOUT:
+                raise RuntimeError(
+                    f"TLV packet stream idle for {idle_seconds:.1f}s (> {PACKET_IDLE_TIMEOUT:.1f}s)"
+                )
+
     log.warning("TLV connection dropped.")
 
 
@@ -288,7 +295,7 @@ async def probe_firmware(dev) -> str:
 
     try:
         async with BleakClient(dev, timeout=15.0) as client:
-            await client.start_notify(NOTIFY_CHAR, _probe_cb)
+            await client.start_notify(NOTIFY_CHAR, _probe_cb, **notify_kwargs())
             try:
                 await asyncio.wait_for(got_packet.wait(), timeout=PROBE_TIMEOUT)
                 return "tlv"
@@ -307,14 +314,6 @@ async def probe_firmware(dev) -> str:
 
 async def find_solix_device():
     address = BLE_ADDR.upper()
-
-    if get_device is not None:
-        try:
-            dev = await get_device(address)
-            if dev is not None:
-                return dev
-        except Exception as exc:
-            log.debug("cached device lookup failed for %s: %s", address, exc)
 
     try:
         dev = await BleakScanner.find_device_by_address(address, timeout=SCAN_TIMEOUT)
@@ -358,12 +357,21 @@ async def ble_loop():
                 await run_tlv(dev)
             else:
                 await run_ecdh(dev)
+            FAILURE_STATE["consecutive_failures"] = 0
 
         except Exception as exc:
+            FAILURE_STATE["consecutive_failures"] += 1
+            failure_count = FAILURE_STATE["consecutive_failures"]
             log.warning("BLE error: %s — retrying in %ss", exc, RECONNECT_DELAY)
             with STATE_LOCK:
                 STATE["ble_connected"] = False
                 STATE["last_error"] = str(exc)
+            if failure_count >= PROCESS_RESET_AFTER_FAILURES:
+                log.error(
+                    "BLE failure count reached %d; exiting process so systemd can reset transport state.",
+                    failure_count,
+                )
+                os._exit(1)
 
         with STATE_LOCK:
             STATE["ble_connected"] = False
@@ -438,6 +446,8 @@ class Handler(BaseHTTPRequestHandler):
                 body = json.dumps({
                     "value": STATE.get("total_output_w"),
                     "solix_reading_ts": STATE.get("timestamp"),
+                    "ble_connected": STATE.get("ble_connected"),
+                    "last_error": STATE.get("last_error"),
                     "solix_soc_pct": STATE.get("soc_pct"),
                     "solix_solar_input_w": STATE.get("solar_input_w"),
                     "solix_total_input_w": STATE.get("total_input_w"),

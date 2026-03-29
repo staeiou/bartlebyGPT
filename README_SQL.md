@@ -1,6 +1,6 @@
 # README_SQL.md
 
-This document is a handoff for the in-progress SQLite-backed telemetry history rearchitecture on branch `sqlite-history-store`.
+This document is a handoff for the SQLite-backed telemetry history rearchitecture on branch `sqlite-history-store`.
 
 It is written for a fresh coding agent. Do not assume this work is deployed just because the code exists in this branch.
 
@@ -8,16 +8,17 @@ It is written for a fresh coding agent. Do not assume this work is deployed just
 
 - Branch: `sqlite-history-store`
 - Repo: `/home/ubuntu/vllm_jetson/bartlebyGPT`
-- This branch contains a new SQLite-backed history path.
-- The branch has **not** been fully deployed to the running services yet.
+- This branch contains the SQLite-backed history path now serving live history.
 - A live SQLite DB **has** already been populated from existing CSV history at:
   - `/opt/bartleby/solix-monitor/logs/history.sqlite3`
-- Since the first version of this document was written, the live Solix BLE path was stabilized separately:
+- Since the first version of this document was written, the live Solix BLE path was changed multiple times:
   - telemetry-driven Solix auto-recovery was disabled
-  - `solix-monitor` reconnect logic was improved and deployed
+  - a retry-connector reconnect path was deployed and later implicated in a long outage
+  - the current live path uses raw `BleakClient`, explicit packet-health timeouts, and forced `StartNotify`
 - Since then, the live history endpoint has also been verified serving from SQLite:
   - `/telemetry/history` now returns `source = "sqlite_history"`
   - `/telemetry/history` now returns `bin_statistic = "median"`
+- The current BLE transport remains an active investigation; the history stack is live, but transport burn-in is still required.
 
 ## What Is Wrong With The Old History System
 
@@ -190,6 +191,31 @@ Verified directly on the host:
   - `2026-03-28T20:08:00+00:00`
 
 So the branch is no longer just a partial SQLite prototype; the median history path is live.
+
+## Current BLE Transport State
+
+The current deployed Solix TLV transport is:
+
+- raw `BleakClient`
+- targeted `find_device_by_address(...)` scan path
+- explicit first-packet timeout
+- explicit packet-idle timeout
+- bounded process reset after repeated failures
+- forced BlueZ `StartNotify` for the Solix notify characteristic by default
+
+Why `StartNotify` is now forced:
+
+- upstream Bleak switched Linux to prefer `AcquireNotify`
+- the live Solix characteristic supports `AcquireNotify`
+- upstream Bleak issue `#1885` documents a BlueZ failure mode where `AcquireNotify` can end in `Unexpected EOF` and immediate disconnect
+- that failure class is close enough to the observed Solix outage to justify forcing `StartNotify`
+
+Current state of that change:
+
+- deployed through the bootstrap script
+- journal confirms `notify_mode=StartNotify`
+- packet flow is currently healthy
+- not yet burn-in validated
 
 ## Importer Status
 
