@@ -25,6 +25,12 @@ if str(OPS_DIR) not in sys.path:
 from history_store import SQLiteHistoryStore
 
 
+class EsphomeFeedError(RuntimeError):
+    def __init__(self, message, extra=None):
+        super().__init__(message)
+        self.extra = dict(extra or {})
+
+
 def env_bool(name, default=False):
     raw = os.environ.get(name)
     if raw is None:
@@ -47,7 +53,7 @@ REQUEST_TIMEOUT = float(os.environ.get("TELEMETRY_REQUEST_TIMEOUT", "1.5"))
 ESPHOME_POWER_URL = os.environ.get("TELEMETRY_ESPHOME_POWER_URL", "").strip()
 ESPHOME_BASE_URL = os.environ.get("TELEMETRY_ESPHOME_BASE_URL", "").strip().rstrip("/")
 ESPHOME_POWER_PATH = os.environ.get("TELEMETRY_ESPHOME_POWER_PATH", "/sensor/power").strip()
-SOLIX_STALE_SECONDS = max(0.0, float(os.environ.get("TELEMETRY_SOLIX_STALE_SECONDS", "45")))
+SOLIX_STALE_SECONDS = max(0.0, float(os.environ.get("TELEMETRY_SOLIX_STALE_SECONDS", "90")))
 SOLIX_AUTO_RECOVER = env_bool("TELEMETRY_SOLIX_AUTO_RECOVER", default=True)
 SOLIX_RECOVERY_COOLDOWN_SECONDS = max(
     30.0, float(os.environ.get("TELEMETRY_SOLIX_RECOVERY_COOLDOWN_SECONDS", "180"))
@@ -303,6 +309,12 @@ def read_esphome_power_watts():
         "solix_voltage_mv", "solix_temp_c", "solix_reading_ts",
         "solix_charging_status",
     ) if k in payload}
+    ble_connected = bool(payload.get("ble_connected"))
+    extra["ble_connected"] = ble_connected
+    if "last_error" in payload:
+        extra["solix_last_error"] = str(payload.get("last_error") or "")
+    if not ble_connected:
+        raise EsphomeFeedError("esphome solix feed disconnected", extra=extra)
     solix_reading_ts = safe_float(payload.get("solix_reading_ts"), lo=0.0)
     if SOLIX_STALE_SECONDS > 0 and solix_reading_ts is not None:
         age_seconds = time.time() - solix_reading_ts
@@ -311,8 +323,9 @@ def read_esphome_power_watts():
                 reason=f"stale solix reading ({age_seconds:.1f}s old)",
                 age_seconds=age_seconds,
             )
-            raise RuntimeError(
-                f"esphome solix reading stale by {age_seconds:.1f}s (>{SOLIX_STALE_SECONDS:.1f}s); {recovery_note}"
+            raise EsphomeFeedError(
+                f"esphome solix reading stale by {age_seconds:.1f}s (>{SOLIX_STALE_SECONDS:.1f}s); {recovery_note}",
+                extra=extra,
             )
     raw_value = payload.get("value")
     if raw_value is None and "value" not in payload:
@@ -730,14 +743,15 @@ def power_backends_in_order():
 
 def read_power_watts():
     errors = []
+    sticky_extra = {}
     for backend in power_backends_in_order():
         try:
             if backend == "jtop":
                 watts, rails_watts, source = read_jtop_power_watts()
-                return watts, rails_watts, source, False, {}, errors
+                return watts, rails_watts, source, False, sticky_extra, errors
             if backend == "nvidia-smi":
                 watts = read_nvidia_smi_watts()
-                return watts, {}, "nvidia-smi", False, {}, errors
+                return watts, {}, "nvidia-smi", False, sticky_extra, errors
             if backend == "esphome":
                 watts, rails, source, is_live, extra = read_esphome_power_watts()
                 return watts, rails, source, is_live, extra, errors
@@ -748,6 +762,8 @@ def read_power_watts():
         except (OSError, RuntimeError, subprocess.SubprocessError, ValueError, json.JSONDecodeError) as err:
             error_detail = f"{backend}: {err}"
             if backend == "esphome":
+                if isinstance(err, EsphomeFeedError):
+                    sticky_extra.update(err.extra)
                 err_text = str(err)
                 if "esphome solix reading stale by" not in err_text:
                     recovery_note = maybe_recover_solix_feed(reason=f"esphome read failure: {err_text}")
@@ -794,6 +810,19 @@ def sample_once():
 
     with STATE_LOCK:
         current = dict(STATE)
+
+        def clear_solix_live_fields():
+            for key in (
+                "solix_solar_input_w",
+                "solix_total_input_w",
+                "solix_voltage_mv",
+                "solix_temp_c",
+                "solix_reading_ts",
+                "solix_charging_status",
+                "solix_effective_solar_w",
+                "power_reading_ts",
+            ):
+                current[key] = None
 
         if "server_load" in next_state:
             current["server_load"] = next_state["server_load"]
@@ -879,9 +908,11 @@ def sample_once():
                 current["cost_share_fraction"] = 1.0
                 current["power_measurement_kind"] = "component-load"
                 current["watts_is_live"] = False
+                clear_solix_live_fields()
         else:
             current["watts_is_live"] = False
             current["power_measurement_kind"] = "unavailable"
+            clear_solix_live_fields()
 
         current["is_active"] = current["requests_running"] > 0
         current["timestamp"] = time.time()

@@ -18,8 +18,28 @@ export function createPowerController({ elements, state, getSettings }) {
     "7d": "",
   };
   const AUTO_PROFILE_ID = "auto-live";
+  const LAST_SOLIX_SOC_STORAGE_KEY = "bartleby_last_solix_soc_pct";
   const wattsBuffer = []; // {ts, watts} — unique BLE readings, kept 30s
   let wattsBufferLastTs = null;
+
+  function readCachedSolixSoc() {
+    try {
+      const raw = window.localStorage.getItem(LAST_SOLIX_SOC_STORAGE_KEY);
+      const parsed = Number.parseFloat(String(raw));
+      return Number.isFinite(parsed) ? parsed : null;
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function writeCachedSolixSoc(soc) {
+    if (!Number.isFinite(Number(soc))) return;
+    try {
+      window.localStorage.setItem(LAST_SOLIX_SOC_STORAGE_KEY, String(Math.round(Number(soc))));
+    } catch (_err) {
+      // ignore storage failures
+    }
+  }
 
   function wattsBufferPush(watts, readingTs) {
     if (readingTs == null || readingTs === wattsBufferLastTs) return;
@@ -605,7 +625,8 @@ ${charts}
         html += `<hr><p><strong>Power:</strong> ${Math.round(displayBaseWatts)}W base + ${Math.round(measuredServerWatts)}W load = ${Math.round(totalWatts)}W</p>`;
       }
 
-      if (isSolixProfile(resolution)) {
+      const showLiveSolix = payload.watts_is_live && payload.power_measurement_kind === "wall-total";
+      if (isSolixProfile(resolution) && showLiveSolix) {
         const effectiveSolarW = Number.parseFloat(String(payload.solix_effective_solar_w ?? payload.solix_solar_input_w));
         const soc = Number.parseFloat(String(payload.solix_soc_pct));
         const hasSolar = Number.isFinite(effectiveSolarW);
@@ -836,8 +857,25 @@ ${charts}
     }
     elements.powerWatts.textContent = formatWattsDisplay(watts);
     elements.wattsLiveDot.hidden = true;
-    elements.powerCo2.textContent = `${co2PerHr.toFixed(1)} gCO2/hr`;
-    elements.powerCost.textContent = formatCostPerHr(displayCost);
+    if (profileId === "pi-rpi4" || profileId === "eco-orin") {
+      const cachedSoc = readCachedSolixSoc();
+      const hasCachedSoc = Number.isFinite(cachedSoc);
+      document.documentElement.style.setProperty("--solix-battery-fill", hasCachedSoc ? `${cachedSoc}%` : "0%");
+      elements.batteryBadge.hidden = !hasCachedSoc;
+      elements.batteryBadgePct.textContent = hasCachedSoc ? `${Math.round(cachedSoc)}%` : "";
+      if (hasCachedSoc) {
+        const fillH = (cachedSoc / 100) * 46;
+        elements.batteryBadgeFill.setAttribute("y", (53 - fillH).toFixed(1));
+        elements.batteryBadgeFill.setAttribute("height", fillH.toFixed(1));
+      }
+      elements.powerCo2.textContent = "Solix connecting";
+      elements.powerCost.textContent = "Battery status pending";
+    } else {
+      document.documentElement.style.setProperty("--solix-battery-fill", "0%");
+      elements.batteryBadge.hidden = true;
+      elements.powerCo2.textContent = `${co2PerHr.toFixed(1)} gCO2/hr`;
+      elements.powerCost.textContent = formatCostPerHr(displayCost);
+    }
     const activeCount = active ? 1 : 0;
     const activeCountText = formatActiveCountText(activeCount);
     elements.powerActiveCount.textContent = activeCountText;
@@ -855,6 +893,10 @@ ${charts}
   }
 
   function renderTelemetryPowerDisplay(payload) {
+    const payloadSoc = Number.parseFloat(String(payload.solix_soc_pct));
+    if (Number.isFinite(payloadSoc)) {
+      writeCachedSolixSoc(payloadSoc);
+    }
     if (Number.isFinite(Number(payload.estimated_total_watts))) {
       wattsBufferPush(Number(payload.estimated_total_watts), payload.solix_reading_ts ?? payload.power_reading_ts);
     }
@@ -931,16 +973,21 @@ ${charts}
     }
     elements.powerWatts.textContent = formatWattsDisplay(displayWatts);
     elements.wattsLiveDot.hidden = !payload.watts_is_live;
+    const isLiveWallTotal = payload.watts_is_live && payload.power_measurement_kind === "wall-total";
     if (profileId === "pi-rpi4" || profileId === "eco-orin") {
-      const solarW = payload.solix_effective_solar_w ?? payload.solix_solar_input_w;
-      const soc = payload.solix_soc_pct;
-      elements.powerCo2.textContent = Number.isFinite(Number(solarW)) && solarW !== null ? `Solar: ${solarW}W in` : "Solar: -- W";
-      elements.powerCost.textContent = Number.isFinite(Number(soc)) && soc !== null ? `${soc}% battery` : "--% battery";
+      const solarW = isLiveWallTotal ? (payload.solix_effective_solar_w ?? payload.solix_solar_input_w) : null;
+      const cachedSoc = readCachedSolixSoc();
+      const soc = isLiveWallTotal ? payload.solix_soc_pct : cachedSoc;
+      const solixStatusText = payload.last_error && String(payload.last_error).includes("solix")
+        ? "Solix reconnecting"
+        : "Battery status pending";
+      elements.powerCo2.textContent = Number.isFinite(Number(solarW)) && solarW !== null ? `Solar: ${solarW}W in` : solixStatusText;
+      elements.powerCost.textContent = Number.isFinite(Number(soc)) && soc !== null ? `${soc}% battery` : solixStatusText;
       const hasSoc = Number.isFinite(Number(soc)) && soc !== null;
       const socNum = hasSoc ? Number(soc) : 0;
       document.documentElement.style.setProperty(
         "--solix-battery-fill",
-        hasSoc ? `${soc}%` : "100%"
+        hasSoc ? `${soc}%` : "0%"
       );
       if (hasSoc) {
         const fillH = (socNum / 100) * 46;

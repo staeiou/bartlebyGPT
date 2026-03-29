@@ -77,10 +77,21 @@ STATE = {
     "hours_remaining": None, "ble_connected": False,
     "source": "solix-ble", "last_error": "", "firmware": None,
     "charging_status": None,
+    "session_id": 0,
+    "session_started_ts": None,
+    "session_first_packet_ts": None,
+    "session_last_packet_ts": None,
+    "session_packet_count": 0,
+    "disconnect_count": 0,
+    "last_disconnect_ts": None,
+    "last_disconnect_reason": "",
+    "last_reconnect_gap_s": None,
+    "last_packet_age_s": None,
 }
 FAILURE_STATE = {
     "consecutive_failures": 0,
     "last_packet_wall_ts": 0.0,
+    "session_seq": 0,
 }
 
 _SOLIX_DEFAULT = -1
@@ -185,21 +196,61 @@ def notify_kwargs():
     return {}
 
 
+def mark_disconnect(reason: str):
+    now = time.time()
+    with STATE_LOCK:
+        STATE["ble_connected"] = False
+        STATE["disconnect_count"] = int(STATE.get("disconnect_count") or 0) + 1
+        STATE["last_disconnect_ts"] = now
+        STATE["last_disconnect_reason"] = reason
+        STATE["last_packet_age_s"] = (
+            None if STATE.get("session_last_packet_ts") is None
+            else max(0.0, now - float(STATE["session_last_packet_ts"]))
+        )
+
+
 async def run_tlv(dev):
     first_packet = asyncio.Event()
     last_packet_mono = 0.0
+    session_started_ts = time.time()
+    FAILURE_STATE["session_seq"] += 1
+    session_id = FAILURE_STATE["session_seq"]
+    with STATE_LOCK:
+        STATE["session_id"] = session_id
+        STATE["session_started_ts"] = session_started_ts
+        STATE["session_first_packet_ts"] = None
+        STATE["session_last_packet_ts"] = None
+        STATE["session_packet_count"] = 0
+        STATE["last_packet_age_s"] = None
 
     def _notify(sender, data: bytes):
         nonlocal last_packet_mono
+        now = time.time()
         last_packet_mono = time.monotonic()
         if not first_packet.is_set():
             first_packet.set()
-            log.info("TLV packet stream established.")
-        FAILURE_STATE["last_packet_wall_ts"] = time.time()
+            reconnect_gap = None
+            with STATE_LOCK:
+                last_disconnect_ts = STATE.get("last_disconnect_ts")
+                if last_disconnect_ts is not None:
+                    reconnect_gap = max(0.0, now - float(last_disconnect_ts))
+                STATE["session_first_packet_ts"] = now
+                STATE["last_reconnect_gap_s"] = reconnect_gap
+            log.info(
+                "TLV packet stream established (session_id=%d reconnect_gap_s=%s).",
+                session_id,
+                "n/a" if reconnect_gap is None else f"{reconnect_gap:.3f}",
+            )
+        with STATE_LOCK:
+            STATE["session_last_packet_ts"] = now
+            STATE["session_packet_count"] = int(STATE.get("session_packet_count") or 0) + 1
+            STATE["last_packet_age_s"] = 0.0
+        FAILURE_STATE["last_packet_wall_ts"] = now
         on_tlv_notify(sender, data)
 
     log.info(
-        "Starting plaintext TLV session (notify_mode=%s).",
+        "Starting plaintext TLV session (session_id=%d notify_mode=%s).",
+        session_id,
         "StartNotify" if FORCE_START_NOTIFY else "AcquireNotify",
     )
     async with BleakClient(dev, timeout=15.0) as client:
@@ -207,6 +258,7 @@ async def run_tlv(dev):
         try:
             await asyncio.wait_for(first_packet.wait(), timeout=FIRST_PACKET_TIMEOUT)
         except asyncio.TimeoutError as exc:
+            mark_disconnect(f"first packet timeout after {FIRST_PACKET_TIMEOUT:.1f}s")
             raise RuntimeError(
                 f"no TLV packets received within {FIRST_PACKET_TIMEOUT:.1f}s after subscribe"
             ) from exc
@@ -214,12 +266,30 @@ async def run_tlv(dev):
         while client.is_connected:
             await asyncio.sleep(1.0)
             idle_seconds = time.monotonic() - last_packet_mono
+            with STATE_LOCK:
+                STATE["last_packet_age_s"] = idle_seconds
             if idle_seconds > PACKET_IDLE_TIMEOUT:
+                mark_disconnect(
+                    f"idle timeout after {idle_seconds:.1f}s (> {PACKET_IDLE_TIMEOUT:.1f}s)"
+                )
                 raise RuntimeError(
                     f"TLV packet stream idle for {idle_seconds:.1f}s (> {PACKET_IDLE_TIMEOUT:.1f}s)"
                 )
 
-    log.warning("TLV connection dropped.")
+    with STATE_LOCK:
+        packet_count = STATE.get("session_packet_count")
+        first_packet_ts = STATE.get("session_first_packet_ts")
+        last_packet_ts = STATE.get("session_last_packet_ts")
+    duration = None
+    if first_packet_ts is not None and last_packet_ts is not None:
+        duration = max(0.0, float(last_packet_ts) - float(first_packet_ts))
+    mark_disconnect("client disconnected")
+    log.warning(
+        "TLV connection dropped (session_id=%d packet_count=%s stream_duration_s=%s).",
+        session_id,
+        packet_count,
+        "n/a" if duration is None else f"{duration:.3f}",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -258,8 +328,7 @@ async def run_ecdh(dev):
         STATE["last_error"] = ""
     await solix._disconnect_event.wait()
     log.warning("ECDH connection lost.")
-    with STATE_LOCK:
-        STATE["ble_connected"] = False
+    mark_disconnect("ecdh connection lost")
     await solix.disconnect()
 
 
@@ -344,6 +413,10 @@ async def ble_loop():
                 with STATE_LOCK:
                     STATE["ble_connected"] = False
                     STATE["last_error"] = "device not found in scan"
+                    STATE["last_packet_age_s"] = (
+                        None if STATE.get("session_last_packet_ts") is None
+                        else max(0.0, time.time() - float(STATE["session_last_packet_ts"]))
+                    )
                 await asyncio.sleep(RECONNECT_DELAY)
                 continue
 
@@ -366,6 +439,10 @@ async def ble_loop():
             with STATE_LOCK:
                 STATE["ble_connected"] = False
                 STATE["last_error"] = str(exc)
+                STATE["last_packet_age_s"] = (
+                    None if STATE.get("session_last_packet_ts") is None
+                    else max(0.0, time.time() - float(STATE["session_last_packet_ts"]))
+                )
             if failure_count >= PROCESS_RESET_AFTER_FAILURES:
                 log.error(
                     "BLE failure count reached %d; exiting process so systemd can reset transport state.",
@@ -443,6 +520,12 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path == "/sensor/power":
             with STATE_LOCK:
+                last_packet_age_s = STATE.get("last_packet_age_s")
+                if STATE.get("session_last_packet_ts") is not None and not STATE.get("ble_connected"):
+                    last_packet_age_s = max(
+                        0.0,
+                        time.time() - float(STATE["session_last_packet_ts"]),
+                    )
                 body = json.dumps({
                     "value": STATE.get("total_output_w"),
                     "solix_reading_ts": STATE.get("timestamp"),
@@ -454,6 +537,16 @@ class Handler(BaseHTTPRequestHandler):
                     "solix_voltage_mv": STATE.get("voltage_mv"),
                     "solix_temp_c": STATE.get("temp_c"),
                     "solix_charging_status": STATE.get("charging_status"),
+                    "session_id": STATE.get("session_id"),
+                    "session_started_ts": STATE.get("session_started_ts"),
+                    "session_first_packet_ts": STATE.get("session_first_packet_ts"),
+                    "session_last_packet_ts": STATE.get("session_last_packet_ts"),
+                    "session_packet_count": STATE.get("session_packet_count"),
+                    "disconnect_count": STATE.get("disconnect_count"),
+                    "last_disconnect_ts": STATE.get("last_disconnect_ts"),
+                    "last_disconnect_reason": STATE.get("last_disconnect_reason"),
+                    "last_reconnect_gap_s": STATE.get("last_reconnect_gap_s"),
+                    "last_packet_age_s": last_packet_age_s,
                 }, separators=(",", ":")).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
