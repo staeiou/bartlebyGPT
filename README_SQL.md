@@ -15,6 +15,10 @@ It is written for a fresh coding agent. Do not assume this work is deployed just
   - telemetry-driven Solix auto-recovery was disabled
   - a retry-connector reconnect path was deployed and later implicated in a long outage
   - the current live path uses raw `BleakClient`, explicit packet-health timeouts, and forced `StartNotify`
+- Since then, telemetry truthfulness was also tightened:
+  - active Solix stale threshold is now `90s`
+  - telemetry preserves last-known `solix_soc_pct` across Solix disconnect/stale fallback
+  - telemetry clears stale live Solix wall/solar fields during fallback instead of carrying them forward
 - Since then, the live history endpoint has also been verified serving from SQLite:
   - `/telemetry/history` now returns `source = "sqlite_history"`
   - `/telemetry/history` now returns `bin_statistic = "median"`
@@ -105,6 +109,11 @@ Key changes:
   - `"median"` for SQLite path
   - `"mean"` for legacy CSV fallback
 - `bootstrap_history_db()` imports legacy CSV rows into SQLite once if the DB is empty
+- active Solix stale threshold on the Jetson profile is now `90s`
+- Solix fallback behavior is now split deliberately:
+  - preserve last-known battery SOC (`solix_soc_pct`)
+  - clear stale live wall/solar fields such as `solix_solar_input_w`, `solix_total_input_w`, `solix_reading_ts`, and `power_reading_ts`
+- this means Solix deployments should continue to show battery state during reconnects without falsely implying live wall-power telemetry
 
 ### solix_monitor.py
 
@@ -176,6 +185,7 @@ But:
 - TLV drops still happen
 - the transport problem is improved, not solved
 - do not re-enable aggressive telemetry-driven recovery blindly
+- stale threshold is now `90s`, not `45s`
 
 ### Current Verified Live History State
 
@@ -216,6 +226,25 @@ Current state of that change:
 - journal confirms `notify_mode=StartNotify`
 - packet flow is currently healthy
 - not yet burn-in validated
+
+## Current Truthfulness Contract
+
+The live Solix deployment should now behave like this:
+
+- when Solix is live:
+  - `watts_is_live = true`
+  - `power_measurement_kind = "wall-total"`
+  - live Solix wall/solar fields are present
+- when Solix is stale or disconnected:
+  - `watts_is_live = false`
+  - telemetry falls back to component-load estimation
+  - last-known `solix_soc_pct` is still preserved
+  - stale live wall/solar fields are cleared
+
+This split is intentional:
+
+- battery SOC is stable enough to keep during short reconnect windows
+- live wall-power and solar input must not be shown once the Solix packet stream is stale
 
 ## Importer Status
 

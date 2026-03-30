@@ -135,6 +135,11 @@ Important on `api-jetson`:
 - do not let telemetry repeatedly restart `bluetooth.service` while Solix is already reconnecting
 - telemetry stale/recovery logic previously made the outage pattern worse
 - current operational preference is to keep telemetry-driven Solix auto-recovery disabled until transport behavior is better understood
+- active telemetry stale threshold is now `90s`
+- on Solix disconnect/stale fallback, telemetry should:
+  - preserve last-known `solix_soc_pct`
+  - clear stale live wall/solar fields
+  - mark wall-power as not live
 
 **Connected but `ble_connected: true`, all telemetry null**
 Likely a firmware mismatch — cached firmware type may be wrong. Delete `firmware_type.txt` and restart to re-probe.
@@ -156,12 +161,16 @@ pip install bleak SolixBLE --break-system-packages
 
 ## Current Jetson Notes
 
-On `api-jetson` as of `2026-03-28`:
+On `api-jetson` as of `2026-03-29`:
 
 - plaintext TLV is still the live path
 - TLV disconnects still happen intermittently
 - the current deployed service forces `StartNotify`
 - journal confirms `Starting plaintext TLV session (notify_mode=StartNotify).`
-- packet flow is live after deploy, but overnight burn-in is still required
+- packet flow is live after deploy and resumes after reboot, but overnight burn-in is still required
+- `/telemetry/history` is serving SQLite-backed median history
+- Solix stale threshold is `90s`
+- telemetry should preserve last-known battery SOC during reconnect windows
+- telemetry should not preserve stale live wall/solar readings during reconnect windows
 
 This does not mean TLV disconnects are solved. It means the current live experiment is now explicitly testing whether `StartNotify` is more stable than `AcquireNotify` for this Solix device on BlueZ.
