@@ -269,13 +269,18 @@ install_solix_monitor() {
   local workdir="${SOLIX_MONITOR_WORKDIR:-/opt/bartleby/solix-monitor}"
   local logs_dir="${SOLIX_CSV_DIR:-${workdir}/logs}"
   local history_db_path="${SOLIX_HISTORY_DB_PATH:-${logs_dir}/history.sqlite3}"
-  local ble_addr="${SOLIX_BLE_ADDR:-F4:9D:8A:83:D3:24}"
+  local ble_addr="${SOLIX_BLE_ADDR:-}"
   local host="${SOLIX_HOST:-127.0.0.1}"
   local port="${SOLIX_PORT:-18082}"
   local csv_interval="${SOLIX_CSV_INTERVAL:-60}"
   local capacity_wh="${SOLIX_CAPACITY_WH:-288}"
   local reconnect_delay="${SOLIX_RECONNECT_DELAY:-10}"
   local venv="${SOLIX_MONITOR_VENV:-/opt/bartleby-solix-venv}"
+
+  if [[ -z "${ble_addr}" ]]; then
+    echo "SOLIX_BLE_ADDR is required when installing solix-monitor; refusing to fall back to a default MAC." >&2
+    exit 1
+  fi
 
   log "Installing Solix monitor service"
 

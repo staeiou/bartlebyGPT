@@ -868,7 +868,7 @@ ${charts}
         elements.batteryBadgeFill.setAttribute("y", (53 - fillH).toFixed(1));
         elements.batteryBadgeFill.setAttribute("height", fillH.toFixed(1));
       }
-      elements.powerCo2.textContent = "Solix connecting";
+      elements.powerCo2.textContent = "Solar in: ?W (connecting)";
       elements.powerCost.textContent = "Battery status pending";
     } else {
       document.documentElement.style.setProperty("--solix-battery-fill", "0%");
@@ -978,11 +978,10 @@ ${charts}
       const solarW = isLiveWallTotal ? (payload.solix_effective_solar_w ?? payload.solix_solar_input_w) : null;
       const cachedSoc = readCachedSolixSoc();
       const soc = isLiveWallTotal ? payload.solix_soc_pct : cachedSoc;
-      const solixStatusText = payload.last_error && String(payload.last_error).includes("solix")
-        ? "Solix reconnecting"
-        : "Battery status pending";
-      elements.powerCo2.textContent = Number.isFinite(Number(solarW)) && solarW !== null ? `Solar: ${solarW}W in` : solixStatusText;
-      elements.powerCost.textContent = Number.isFinite(Number(soc)) && soc !== null ? `${soc}% battery` : solixStatusText;
+      const solarStatusText = "Solar in: ?W (connecting)";
+      const batteryStatusText = "Battery status pending";
+      elements.powerCo2.textContent = Number.isFinite(Number(solarW)) && solarW !== null ? `Solar: ${solarW}W in` : solarStatusText;
+      elements.powerCost.textContent = Number.isFinite(Number(soc)) && soc !== null ? `${soc}% battery` : batteryStatusText;
       const hasSoc = Number.isFinite(Number(soc)) && soc !== null;
       const socNum = hasSoc ? Number(soc) : 0;
       document.documentElement.style.setProperty(
