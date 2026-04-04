@@ -262,25 +262,14 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
       animation: false,
       backgroundColor: "transparent",
       toolbox: {
-        left: 16,
+        left: "center",
         top: 4,
         feature: {
           dataZoom: { yAxisIndex: "none", title: { zoom: "Zoom", back: "Reset" } },
         },
       },
       dataZoom: [{ type: "inside" }],
-      legend: {
-        top: 6,
-        right: 16,
-        itemWidth: 32,
-        itemHeight: 4,
-        textStyle: {
-          fontFamily: "system-ui, -apple-system, sans-serif",
-          fontSize: legendFontSize,
-          fontWeight: 700,
-          color: "rgba(36,32,26,0.84)",
-        },
-      },
+      legend: { show: false },
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "cross" },
@@ -295,14 +284,14 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
           const header = params[0] ? `<strong>${params[0].axisValueLabel}</strong><br>` : "";
           const rows = params.map((p) => {
             const raw = p.value && p.value[1];
-            const val = (raw === null || raw === undefined || Number.isNaN(Number(raw))) ? "--" : `${Math.round(Number(raw))}${units[p.seriesName] ?? ""}`;
+            const val = (raw === null || raw === undefined || Number.isNaN(Number(raw))) ? "--" : p.seriesName === "State of Charge" ? `${Number(raw).toFixed(1)}${units[p.seriesName] ?? ""}` : `${Math.round(Number(raw))}${units[p.seriesName] ?? ""}`;
             return `${p.marker}${p.seriesName}: ${val}`;
           });
           return header + rows.join("<br>");
         },
       },
       grid: {
-        top: 58,
+        top: 36,
         left: gridLR,
         right: gridLR,
         bottom: 76,
@@ -976,19 +965,20 @@ ${charts}
       const solarStatusText = window.innerWidth < 540 ? "Solar in: ?W" : "Solar in: ?W (connecting)";
       const batteryStatusText = "Battery status pending";
       elements.powerCo2.textContent = Number.isFinite(Number(solarW)) && solarW !== null ? `Solar: ${solarW}W in` : solarStatusText;
-      elements.powerCost.textContent = Number.isFinite(Number(soc)) && soc !== null ? `${soc}% battery` : batteryStatusText;
       const hasSoc = Number.isFinite(Number(soc)) && soc !== null;
       const socNum = hasSoc ? Number(soc) : 0;
+      const socRounded = hasSoc ? Math.round(socNum) : 0;
+      elements.powerCost.textContent = hasSoc ? `${socRounded}% battery` : batteryStatusText;
       document.documentElement.style.setProperty(
         "--solix-battery-fill",
-        hasSoc ? `${soc}%` : "0%"
+        hasSoc ? `${socNum}%` : "0%"
       );
       if (hasSoc) {
         const fillH = (socNum / 100) * 46;
         elements.batteryBadgeFill.setAttribute("y", (53 - fillH).toFixed(1));
         elements.batteryBadgeFill.setAttribute("height", fillH.toFixed(1));
       }
-      elements.batteryBadgePct.textContent = hasSoc ? `${soc}%` : "";
+      elements.batteryBadgePct.textContent = hasSoc ? `${socRounded}%` : "";
       elements.batteryBadge.hidden = !hasSoc;
     } else {
       document.documentElement.style.setProperty("--solix-battery-fill", "100%");
