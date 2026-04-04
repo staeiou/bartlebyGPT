@@ -313,6 +313,10 @@ export function createWelcomeController({ elements, state, updateInputCount }) {
     shell.appendChild(grid);
     shell.appendChild(toggleBar);
     elements.messages.appendChild(shell);
+    if (window.innerWidth < 540) {
+      setView("cards", grid, toggleBar, searchControls);
+      searchMeta.hidden = true;
+    }
     requestWelcomeCardFit();
   }
 

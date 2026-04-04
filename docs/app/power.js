@@ -868,7 +868,7 @@ ${charts}
         elements.batteryBadgeFill.setAttribute("y", (53 - fillH).toFixed(1));
         elements.batteryBadgeFill.setAttribute("height", fillH.toFixed(1));
       }
-      elements.powerCo2.textContent = "Solar in: ?W (connecting)";
+      elements.powerCo2.textContent = window.innerWidth < 540 ? "Solar in: ?W" : "Solar in: ?W (connecting)";
       elements.powerCost.textContent = "Battery status pending";
     } else {
       document.documentElement.style.setProperty("--solix-battery-fill", "0%");
@@ -978,7 +978,7 @@ ${charts}
       const solarW = isLiveWallTotal ? (payload.solix_effective_solar_w ?? payload.solix_solar_input_w) : null;
       const cachedSoc = readCachedSolixSoc();
       const soc = isLiveWallTotal ? payload.solix_soc_pct : cachedSoc;
-      const solarStatusText = "Solar in: ?W (connecting)";
+      const solarStatusText = window.innerWidth < 540 ? "Solar in: ?W" : "Solar in: ?W (connecting)";
       const batteryStatusText = "Battery status pending";
       elements.powerCo2.textContent = Number.isFinite(Number(solarW)) && solarW !== null ? `Solar: ${solarW}W in` : solarStatusText;
       elements.powerCost.textContent = Number.isFinite(Number(soc)) && soc !== null ? `${soc}% battery` : batteryStatusText;
