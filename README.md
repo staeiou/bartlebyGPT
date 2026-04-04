@@ -14,6 +14,7 @@ This branch currently includes:
 - Web app: [`docs/`](/home/ubuntu/vllm_jetson/bartlebyGPT/docs)
 - Telemetry server: [`ops/scripts/power_telemetry.py`](/home/ubuntu/vllm_jetson/bartlebyGPT/ops/scripts/power_telemetry.py)
 - Solix monitor: [`ops/services/solix-monitor/solix_monitor.py`](/home/ubuntu/vllm_jetson/bartlebyGPT/ops/services/solix-monitor/solix_monitor.py)
+- LFP monitor: [`ops/services/lfp-monitor/lfp_monitor.py`](/home/ubuntu/vllm_jetson/bartlebyGPT/ops/services/lfp-monitor/lfp_monitor.py)
 - Shared SQLite history store: [`ops/history_store.py`](/home/ubuntu/vllm_jetson/bartlebyGPT/ops/history_store.py)
 - Bootstrap/deploy entrypoint: [`ops/bootstrap/bootstrap_fresh_box.sh`](/home/ubuntu/vllm_jetson/bartlebyGPT/ops/bootstrap/bootstrap_fresh_box.sh)
 
@@ -36,8 +37,8 @@ Do not treat `/opt/bartleby/*` or `/var/www/bartlebygpt/` as source of truth.
 - Ops overview: [ops/README.md](/home/ubuntu/vllm_jetson/bartlebyGPT/ops/README.md)
 - Full session handoff/work log: [HANDOFF_2026-03-29-8AM.md](/home/ubuntu/vllm_jetson/bartlebyGPT/HANDOFF_2026-03-29-8AM.md)
 
-## Important Current Caveat
+## Important Current Caveats
 
-For Solix deployments, `SOLIX_BLE_ADDR` must be provided per machine.
+For Solix deployments (`api-jetson`, `rpi4-llama-live`), `SOLIX_BLE_ADDR` must be provided per machine. The bootstrap refuses to fall back to a default MAC.
 
-The bootstrap path now refuses to silently fall back to a default MAC when installing `solix-monitor`.
+For the LFP deployment (`jetson-solar-lfp`), `SOLIX_BLE_ADDR` (JBD BMS) and `VICTRON_ENCRYPTION_KEY` must be set — the key goes in `/root/bartleby-secrets.env`, not the profile.

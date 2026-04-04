@@ -132,7 +132,7 @@ def update_state(*, soc, temp_c, voltage_mv, solar_w, total_in,
         })
     if HISTORY_DB is not None:
         try:
-            HISTORY_DB.record_solix_event(
+            HISTORY_DB.record_battery_event(
                 reading_ts=reading_ts,
                 load_w=total_out,
                 charge_w=total_in,

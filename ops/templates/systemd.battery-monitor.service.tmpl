@@ -1,0 +1,31 @@
+[Unit]
+Description=Battery BLE Monitor
+After=bluetooth.target network.target
+Wants=bluetooth.target
+
+[Service]
+Type=simple
+User={{BATTERY_MONITOR_USER}}
+WorkingDirectory={{BATTERY_MONITOR_WORKDIR}}
+ExecStart={{BATTERY_MONITOR_PYTHON}} {{BATTERY_MONITOR_SCRIPT}}
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Generic name — read by lfp_monitor and any future monitor.
+Environment=BLE_ADDR={{BLE_ADDR}}
+# Solix-compat alias — read by solix_monitor.py.
+Environment=SOLIX_BLE_ADDR={{BLE_ADDR}}
+Environment=SOLIX_HOST={{MONITOR_HOST}}
+Environment=SOLIX_PORT={{MONITOR_PORT}}
+Environment=SOLIX_CSV_DIR={{MONITOR_CSV_DIR}}
+Environment=SOLIX_CSV_INTERVAL={{MONITOR_CSV_INTERVAL}}
+Environment=SOLIX_HISTORY_DB_PATH={{MONITOR_HISTORY_DB_PATH}}
+Environment=SOLIX_CAPACITY_WH={{MONITOR_CAPACITY_WH}}
+Environment=SOLIX_RECONNECT_DELAY={{MONITOR_RECONNECT_DELAY}}
+Environment=VICTRON_BLE_ADDR={{VICTRON_BLE_ADDR}}
+Environment=VICTRON_ENCRYPTION_KEY={{VICTRON_ENCRYPTION_KEY}}
+
+[Install]
+WantedBy=multi-user.target

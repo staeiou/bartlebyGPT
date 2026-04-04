@@ -248,24 +248,34 @@ template_render() {
   sed "${sed_expr[@]}" "${src}" > "${dst}"
 }
 
-install_solix_monitor() {
+install_battery_monitor() {
   local should_install="0"
   local esphome_url="${TELEMETRY_ESPHOME_POWER_URL:-}"
 
-  if [[ "${FORCE_SOLIX_MONITOR}" == "1" || "${ENABLE_SOLIX_MONITOR:-0}" == "1" ]]; then
+  # Accept both ENABLE_BATTERY_MONITOR (new) and ENABLE_SOLIX_MONITOR (legacy).
+  if [[ "${FORCE_SOLIX_MONITOR}" == "1" \
+     || "${ENABLE_BATTERY_MONITOR:-0}" == "1" \
+     || "${ENABLE_SOLIX_MONITOR:-0}" == "1" ]]; then
     should_install="1"
   elif [[ "${TELEMETRY_POWER_BACKEND:-}" == "esphome" && "${esphome_url}" == *"127.0.0.1:18082"* ]]; then
     should_install="1"
   fi
 
   if [[ "${should_install}" != "1" ]]; then
-    log "Solix monitor not required for this profile"
+    log "Battery monitor not required for this profile"
     return
   fi
 
-  local solix_user
-  solix_user="$(choose_solix_user)"
+  local monitor_user
+  monitor_user="$(choose_solix_user)"
 
+  # BATTERY_MONITOR_SCRIPT: path to the monitor script in the repo.
+  # Defaults to solix_monitor.py for backwards compatibility.
+  local monitor_src="${BATTERY_MONITOR_SCRIPT:-${OPS_DIR}/services/solix-monitor/solix_monitor.py}"
+  local monitor_script_name
+  monitor_script_name="$(basename "${monitor_src}")"
+
+  local service_name="${BATTERY_MONITOR_SERVICE_NAME:-solix-monitor}"
   local workdir="${SOLIX_MONITOR_WORKDIR:-/opt/bartleby/solix-monitor}"
   local logs_dir="${SOLIX_CSV_DIR:-${workdir}/logs}"
   local history_db_path="${SOLIX_HISTORY_DB_PATH:-${logs_dir}/history.sqlite3}"
@@ -275,20 +285,22 @@ install_solix_monitor() {
   local csv_interval="${SOLIX_CSV_INTERVAL:-60}"
   local capacity_wh="${SOLIX_CAPACITY_WH:-288}"
   local reconnect_delay="${SOLIX_RECONNECT_DELAY:-10}"
+  local victron_addr="${VICTRON_BLE_ADDR:-}"
+  local victron_key="${VICTRON_ENCRYPTION_KEY:-}"
   local venv="${SOLIX_MONITOR_VENV:-/opt/bartleby-solix-venv}"
 
   if [[ -z "${ble_addr}" ]]; then
-    echo "SOLIX_BLE_ADDR is required when installing solix-monitor; refusing to fall back to a default MAC." >&2
+    echo "SOLIX_BLE_ADDR is required when installing battery monitor; refusing to fall back to a default MAC." >&2
     exit 1
   fi
 
-  log "Installing Solix monitor service"
+  log "Installing battery monitor service (${service_name})"
 
   "${SUDO[@]}" mkdir -p "${workdir}" "${logs_dir}" "$(dirname "${history_db_path}")"
-  "${SUDO[@]}" cp "${OPS_DIR}/services/solix-monitor/solix_monitor.py" "${workdir}/solix_monitor.py"
+  "${SUDO[@]}" cp "${monitor_src}" "${workdir}/${monitor_script_name}"
   "${SUDO[@]}" cp "${OPS_DIR}/history_store.py" "${workdir}/history_store.py"
-  "${SUDO[@]}" chmod 0755 "${workdir}/solix_monitor.py"
-  "${SUDO[@]}" chown -R "${solix_user}:${solix_user}" "${workdir}" "${logs_dir}" "$(dirname "${history_db_path}")"
+  "${SUDO[@]}" chmod 0755 "${workdir}/${monitor_script_name}"
+  "${SUDO[@]}" chown -R "${monitor_user}:${monitor_user}" "${workdir}" "${logs_dir}" "$(dirname "${history_db_path}")"
 
   if [[ ! -x "${venv}/bin/python" ]]; then
     "${SUDO[@]}" python3 -m venv "${venv}"
@@ -298,31 +310,36 @@ install_solix_monitor() {
   if ! "${SUDO[@]}" "${venv}/bin/pip" install --upgrade SolixBLE; then
     log "SolixBLE not available for this venv interpreter; continuing in TLV-only mode"
   fi
+  if ! "${SUDO[@]}" "${venv}/bin/pip" install --upgrade victron-ble; then
+    log "victron-ble not available for this venv interpreter; Victron data will be absent"
+  fi
 
   local tmp_unit
   tmp_unit="$(mktemp)"
   template_render \
-    "${OPS_DIR}/templates/systemd.solix-monitor.service.tmpl" \
+    "${OPS_DIR}/templates/systemd.battery-monitor.service.tmpl" \
     "${tmp_unit}" \
-    "SOLIX_MONITOR_USER=${solix_user}" \
-    "SOLIX_MONITOR_WORKDIR=${workdir}" \
-    "SOLIX_MONITOR_PYTHON=${venv}/bin/python" \
-    "SOLIX_MONITOR_SCRIPT=${workdir}/solix_monitor.py" \
-    "SOLIX_BLE_ADDR=${ble_addr}" \
-    "SOLIX_HOST=${host}" \
-    "SOLIX_PORT=${port}" \
-    "SOLIX_CSV_DIR=${logs_dir}" \
-    "SOLIX_CSV_INTERVAL=${csv_interval}" \
-    "SOLIX_HISTORY_DB_PATH=${history_db_path}" \
-    "SOLIX_CAPACITY_WH=${capacity_wh}" \
-    "SOLIX_RECONNECT_DELAY=${reconnect_delay}"
+    "BATTERY_MONITOR_USER=${monitor_user}" \
+    "BATTERY_MONITOR_WORKDIR=${workdir}" \
+    "BATTERY_MONITOR_PYTHON=${venv}/bin/python" \
+    "BATTERY_MONITOR_SCRIPT=${workdir}/${monitor_script_name}" \
+    "BLE_ADDR=${ble_addr}" \
+    "MONITOR_HOST=${host}" \
+    "MONITOR_PORT=${port}" \
+    "MONITOR_CSV_DIR=${logs_dir}" \
+    "MONITOR_CSV_INTERVAL=${csv_interval}" \
+    "MONITOR_HISTORY_DB_PATH=${history_db_path}" \
+    "MONITOR_CAPACITY_WH=${capacity_wh}" \
+    "MONITOR_RECONNECT_DELAY=${reconnect_delay}" \
+    "VICTRON_BLE_ADDR=${victron_addr}" \
+    "VICTRON_ENCRYPTION_KEY=${victron_key}"
 
-  "${SUDO[@]}" cp "${tmp_unit}" /etc/systemd/system/solix-monitor.service
+  "${SUDO[@]}" cp "${tmp_unit}" "/etc/systemd/system/${service_name}.service"
   rm -f "${tmp_unit}"
 
   "${SUDO[@]}" systemctl daemon-reload
-  "${SUDO[@]}" systemctl enable solix-monitor >/dev/null
-  "${SUDO[@]}" systemctl restart solix-monitor
+  "${SUDO[@]}" systemctl enable "${service_name}" >/dev/null
+  "${SUDO[@]}" systemctl restart "${service_name}"
 }
 
 install_bartleby_stack_service() {
@@ -512,7 +529,7 @@ main() {
   install_base_packages
   install_cloudflared_service "${CLOUDFLARE_TUNNEL_TOKEN:-}"
   ensure_inference_ready
-  install_solix_monitor
+  install_battery_monitor
   install_bartleby_stack_service
   wait_for_public_health
   wait_for_telemetry_health

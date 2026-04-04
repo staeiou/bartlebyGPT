@@ -24,8 +24,9 @@ Nothing here is served to end users.
 - `ops/scripts/run-stack.sh`: canonical runtime launcher
 - `ops/scripts/power_telemetry.py`: telemetry HTTP service (`/telemetry/power`)
 - `ops/services/solix-monitor/solix_monitor.py`: Anker Solix C300X DC BLE monitor service source
+- `ops/services/lfp-monitor/lfp_monitor.py`: LFP12100EK (JBD BMS) + Victron SmartSolar BLE monitor service source
 - `ops/scripts/doctor.sh`: health + telemetry verification checks
-- `ops/bootstrap/bootstrap_fresh_box.sh`: one-command fresh host setup
+- `ops/bootstrap/bootstrap_fresh_box.sh`: one-command fresh host setup; installs battery monitor via `--force-solix-monitor` (accepts `BATTERY_MONITOR_SCRIPT` to select which monitor)
 - `ops/bootstrap/bootstrap_jetson_full.sh`: full Jetson bootstrap (AWQ + BnB path)
 - `ops/bootstrap/bootstrap_jetson_fast.sh`: fast Jetson rebootstrap
 - `ops/bootstrap/bootstrap_rpi_llama_full.sh`: full Pi bootstrap (`llama-server` + systemd)
@@ -44,7 +45,7 @@ Nothing here is served to end users.
 
 ```bash
 cd /path/to/bartlebyGPT
-sudo PROFILE=eco-jetson ./ops/scripts/run-stack.sh
+sudo PROFILE=api-jetson ./ops/scripts/run-stack.sh
 ```
 
 Or for home RTX API:
@@ -113,9 +114,9 @@ sudo PROFILE=rpi4-llama-live ./ops/scripts/run-stack.sh
 ## Deployment Split
 
 - Web + API + tunnel hosts:
-  - `eco-jetson`
-  - `api-jetson`
-  - `rpi4-llama-live`
+  - `api-jetson` — Jetson + Anker Solix C300X DC (288Wh)
+  - `jetson-solar-lfp` — Jetson + LFP12100EK (1200Wh) + Victron SmartSolar MPPT 100/20
+  - `rpi4-llama-live` — Raspberry Pi + Anker Solix C300X DC
 - API-only hosts (frontend on GitHub Pages):
   - `home-rtx4000`
   - `rtx-pod-vllm`
@@ -132,14 +133,13 @@ Systemd dispatch examples:
 
 ```bash
 sudo PROFILE=rpi4-llama-systemd ./ops/scripts/run-stack.sh
-sudo PROFILE=eco-jetson-systemd ./ops/scripts/run-stack.sh
 ```
 
 Boot-persistent full stack examples (run once, then auto-start on boot):
 
 ```bash
 # Jetson full stack at boot (reuses vllm.service)
-sudo PROFILE=eco-jetson ./ops/bootstrap/bootstrap_stack_service.sh
+sudo PROFILE=api-jetson ./ops/bootstrap/bootstrap_stack_service.sh
 
 # Raspberry Pi full stack at boot (reuses bartleby-llama.service)
 sudo PROFILE=rpi4-llama-live ./ops/bootstrap/bootstrap_stack_service.sh
@@ -168,23 +168,43 @@ Expected routing for `rpi4-llama-live`:
 You can also point directly to any profile file:
 
 ```bash
-sudo PROFILE_FILE=./ops/config/profiles/eco-jetson.env ./ops/scripts/run-stack.sh
+sudo PROFILE_FILE=./ops/config/profiles/api-jetson.env ./ops/scripts/run-stack.sh
 ```
 
-## Solix BLE Power Telemetry
+## Battery BLE Power Telemetry
 
-Both deployments run on an Anker Solix C300X DC battery (288Wh LFP).
-Power is read directly over BLE by `solix-monitor.service` (repo source in `ops/services/solix-monitor/`).
+Battery monitor services read power data over BLE and expose a common HTTP contract at `http://127.0.0.1:18082/sensor/power` consumed by `power_telemetry.py`. Two monitors exist:
 
-The service auto-detects firmware protocol on first connect (plaintext TLV vs ECDH-encrypted) and caches the result to `firmware_type.txt`. Same code runs on both machines.
+### solix-monitor (`api-jetson`, `rpi4-llama-live`)
 
-- Logs per-day CSVs (default) to `/opt/bartleby/solix-monitor/logs/solix-YYYY-MM-DD.csv` every 60s
-- Serves live JSON at `http://127.0.0.1:18082/solix/power`
-- ESPHome shim at `http://127.0.0.1:18082/sensor/power` feeds `power_telemetry.py`
+Source: `ops/services/solix-monitor/solix_monitor.py`
+
+Reads the Anker Solix C300X DC (288Wh) via BLE. Auto-detects firmware protocol (plaintext TLV vs ECDH-encrypted) on first connect and caches to `firmware_type.txt`.
+
+- Logs to `/opt/bartleby/solix-monitor/logs/solix-YYYY-MM-DD.csv` every 60s
+- Installed by `bootstrap_fresh_box.sh` with `ENABLE_BATTERY_MONITOR=1`
 
 Manage: `sudo systemctl {start,stop,restart,status} solix-monitor`
 
-See `ops/runbooks/solix-ble.md` for setup, troubleshooting, and firmware details.
+See `ops/runbooks/solix-ble.md` for setup and firmware details.
+
+### lfp-monitor (`jetson-solar-lfp`)
+
+Source: `ops/services/lfp-monitor/lfp_monitor.py`
+
+Two BLE sources:
+- **JBD BMS** (`A5:C2:39:1A:5D:29`): LFP12100EK — SOC (from Ah ratio), voltage, temperature, net current.
+- **Victron SmartSolar MPPT 100/20** (`CD:4C:1F:A1:BF:EF`, passive advertisement): solar_w, load_w via `external_device_load`.
+
+Topology: Jetson powered from Victron load output. `load_w = external_device_load`. `solar_w = solar_power`.
+
+SOC is derived from `remaining_ah / nominal_ah` — the BMS-reported SOC% is unreliable on a new battery until several charge cycles complete.
+
+- Logs to `/opt/bartleby/lfp-monitor/logs/battery-YYYY-MM-DD.csv` every 60s
+- Requires `VICTRON_ENCRYPTION_KEY` in `/root/bartleby-secrets.env`
+- Installed by `bootstrap_fresh_box.sh` with `ENABLE_BATTERY_MONITOR=1` and `BATTERY_MONITOR_SCRIPT=./ops/services/lfp-monitor/lfp_monitor.py`
+
+Manage: `sudo systemctl {start,stop,restart,status} lfp-monitor`
 
 ## Jetson Power Optimization
 
@@ -199,7 +219,7 @@ On headless Jetson deployments, unused audio and camera kernel modules waste sig
 - Keep one telemetry schema across all deployments (Jetson, RTX, future Pi).
 - Power telemetry backend options:
   - `TELEMETRY_POWER_BACKEND=esphome` + `TELEMETRY_ESPHOME_POWER_URL=http://<plug-ip>/sensor/power` for smart plug (WiFi)
-  - On Solix BLE deployments (`api-jetson`, `rpi4-llama-live`), `solix-monitor.service` exposes an ESPHome-compatible `/sensor/power` shim at `http://127.0.0.1:18082/sensor/power`. `total_output_w` from Solix becomes `estimated_total_watts` in the telemetry contract.
+  - Battery monitor deployments (`api-jetson`, `rpi4-llama-live`, `jetson-solar-lfp`) expose an ESPHome-compatible `/sensor/power` shim at `http://127.0.0.1:18082/sensor/power` consumed by `power_telemetry.py`. All monitors emit both `battery_*` (canonical) and `solix_*` (compat) field names.
 - `run-stack.sh` process mode is best for pod/container and for live web+tunnel foreground runs.
 - Pi systemd scripts are best for persistent inference service management on bare metal.
 - `STACK_MODE=systemd` in `run-stack.sh` is a dispatcher for bootstrap scripts, not a full-systemd replacement for every component.

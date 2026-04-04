@@ -131,7 +131,7 @@ def main():
 
     if args.solix_log_dir:
         for rows in batched(iter_solix_rows(args.solix_log_dir), args.batch_size):
-            solix_imported += store.import_solix_rows(rows)
+            solix_imported += store.import_battery_rows(rows)
 
     if args.vllm_log_dir:
         for rows in batched(iter_vllm_rows(args.vllm_log_dir), args.batch_size):

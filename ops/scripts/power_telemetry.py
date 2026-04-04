@@ -61,7 +61,12 @@ SOLIX_RECOVERY_COOLDOWN_SECONDS = max(
 SOLIX_RECOVERY_ESCALATE_EVERY = max(
     1, int(os.environ.get("TELEMETRY_SOLIX_RECOVERY_ESCALATE_EVERY", "2"))
 )
+BATTERY_MONITOR_SERVICE_NAME = os.environ.get("BATTERY_MONITOR_SERVICE_NAME", "solix-monitor").strip()
 SOLIX_LOG_DIR = os.environ.get("TELEMETRY_SOLIX_LOG_DIR", "/opt/bartleby/solix-monitor/logs").strip()
+BATTERY_CSV_DIR = os.environ.get("TELEMETRY_BATTERY_CSV_DIR", SOLIX_LOG_DIR).strip()
+BATTERY_CSV_PREFIX = os.environ.get("TELEMETRY_BATTERY_CSV_PREFIX", "solix").strip().rstrip("-")
+DEPLOYMENT_PROFILE = os.environ.get("DEPLOYMENT_PROFILE", "").strip()
+BATTERY_CAPACITY_WH = float(os.environ.get("BATTERY_CAPACITY_WH", "0"))
 VLLM_LOG_DIR = os.environ.get("TELEMETRY_VLLM_LOG_DIR", "").strip()
 HISTORY_DB_PATH = os.environ.get("TELEMETRY_HISTORY_DB_PATH", "").strip()
 HISTORY_CACHE_TTL_SECONDS = max(
@@ -119,6 +124,16 @@ STATE = {
     "power_reading_ts": None,
     "power_rails_watts": {},
     "last_error": "",
+    "battery_soc_pct": None,
+    "battery_solar_input_w": None,
+    "battery_total_input_w": None,
+    "battery_voltage_mv": None,
+    "battery_temp_c": None,
+    "battery_reading_ts": None,
+    "battery_charging_status": None,
+    "battery_effective_solar_w": None,
+    "battery_capacity_wh": BATTERY_CAPACITY_WH if BATTERY_CAPACITY_WH > 0 else None,
+    # solix_* compat aliases — populated alongside battery_* while old monitors are still deployed
     "solix_soc_pct": None,
     "solix_solar_input_w": None,
     "solix_total_input_w": None,
@@ -127,6 +142,7 @@ STATE = {
     "solix_reading_ts": None,
     "solix_charging_status": None,
     "solix_effective_solar_w": None,
+    "deployment_profile": DEPLOYMENT_PROFILE or None,
 }
 
 JTOP_POWER_SERVICE = None
@@ -304,29 +320,52 @@ def resolve_esphome_power_url():
 
 def read_esphome_power_watts():
     payload = json.loads(fetch_text(resolve_esphome_power_url()))
-    extra = {k: payload[k] for k in (
-        "solix_soc_pct", "solix_solar_input_w", "solix_total_input_w",
-        "solix_voltage_mv", "solix_temp_c", "solix_reading_ts",
-        "solix_charging_status",
-    ) if k in payload}
+
+    # Collect battery_* fields (canonical); fall back to solix_* for older monitors.
+    def _bfield(battery_key, solix_key):
+        return payload.get(battery_key) if battery_key in payload else payload.get(solix_key)
+
+    reading_ts = _bfield("battery_reading_ts", "solix_reading_ts")
+    extra = {
+        # canonical battery_* fields
+        "battery_soc_pct":        _bfield("battery_soc_pct", "solix_soc_pct"),
+        "battery_solar_input_w":  _bfield("battery_solar_input_w", "solix_solar_input_w"),
+        "battery_total_input_w":  _bfield("battery_total_input_w", "solix_total_input_w"),
+        "battery_voltage_mv":     _bfield("battery_voltage_mv", "solix_voltage_mv"),
+        "battery_temp_c":         _bfield("battery_temp_c", "solix_temp_c"),
+        "battery_reading_ts":     reading_ts,
+        "battery_charging_status": _bfield("battery_charging_status", "solix_charging_status"),
+        "battery_capacity_wh":    payload.get("battery_capacity_wh"),
+        # solix_* compat aliases (remove after all monitors emit battery_* natively)
+        "solix_soc_pct":          _bfield("battery_soc_pct", "solix_soc_pct"),
+        "solix_solar_input_w":    _bfield("battery_solar_input_w", "solix_solar_input_w"),
+        "solix_total_input_w":    _bfield("battery_total_input_w", "solix_total_input_w"),
+        "solix_voltage_mv":       _bfield("battery_voltage_mv", "solix_voltage_mv"),
+        "solix_temp_c":           _bfield("battery_temp_c", "solix_temp_c"),
+        "solix_reading_ts":       reading_ts,
+        "solix_charging_status":  _bfield("battery_charging_status", "solix_charging_status"),
+    }
     ble_connected = bool(payload.get("ble_connected"))
     extra["ble_connected"] = ble_connected
     if "last_error" in payload:
         extra["solix_last_error"] = str(payload.get("last_error") or "")
+
     if not ble_connected:
-        raise EsphomeFeedError("esphome solix feed disconnected", extra=extra)
-    solix_reading_ts = safe_float(payload.get("solix_reading_ts"), lo=0.0)
-    if SOLIX_STALE_SECONDS > 0 and solix_reading_ts is not None:
-        age_seconds = time.time() - solix_reading_ts
+        raise EsphomeFeedError("esphome battery feed disconnected", extra=extra)
+
+    reading_ts_f = safe_float(reading_ts, lo=0.0)
+    if SOLIX_STALE_SECONDS > 0 and reading_ts_f is not None:
+        age_seconds = time.time() - reading_ts_f
         if age_seconds > SOLIX_STALE_SECONDS:
-            recovery_note = maybe_recover_solix_feed(
-                reason=f"stale solix reading ({age_seconds:.1f}s old)",
+            recovery_note = maybe_recover_battery_feed(
+                reason=f"stale battery reading ({age_seconds:.1f}s old)",
                 age_seconds=age_seconds,
             )
             raise EsphomeFeedError(
-                f"esphome solix reading stale by {age_seconds:.1f}s (>{SOLIX_STALE_SECONDS:.1f}s); {recovery_note}",
+                f"esphome battery reading stale by {age_seconds:.1f}s (>{SOLIX_STALE_SECONDS:.1f}s); {recovery_note}",
                 extra=extra,
             )
+
     raw_value = payload.get("value")
     if raw_value is None and "value" not in payload:
         state_value = str(payload.get("state", ""))
@@ -341,7 +380,7 @@ def read_esphome_power_watts():
     return watts, {}, "esphome", True, extra
 
 
-def maybe_recover_solix_feed(reason, age_seconds=None):
+def maybe_recover_battery_feed(reason, age_seconds=None):
     if not SOLIX_AUTO_RECOVER:
         return "auto-recovery disabled"
 
@@ -355,14 +394,15 @@ def maybe_recover_solix_feed(reason, age_seconds=None):
         SOLIX_RECOVERY_STATE["attempt_count"] = int(SOLIX_RECOVERY_STATE.get("attempt_count") or 0) + 1
         attempt_count = SOLIX_RECOVERY_STATE["attempt_count"]
 
+    monitor_unit = BATTERY_MONITOR_SERVICE_NAME
     if attempt_count % SOLIX_RECOVERY_ESCALATE_EVERY == 0:
-        restart_units = ["bluetooth.service", "solix-monitor.service"]
-        mode_label = "restart bluetooth.service + solix-monitor.service"
+        restart_units = ["bluetooth.service", monitor_unit]
+        mode_label = f"restart bluetooth.service + {monitor_unit}"
     else:
-        restart_units = ["solix-monitor.service"]
-        mode_label = "restart solix-monitor.service"
+        restart_units = [monitor_unit]
+        mode_label = f"restart {monitor_unit}"
 
-    logging.warning("Solix feed recovery attempt #%d: %s (reason=%s)", attempt_count, mode_label, reason)
+    logging.warning("Battery feed recovery attempt #%d: %s (reason=%s)", attempt_count, mode_label, reason)
     try:
         for unit in restart_units:
             subprocess.run(
@@ -372,11 +412,11 @@ def maybe_recover_solix_feed(reason, age_seconds=None):
                 text=True,
                 timeout=20,
             )
-        logging.warning("Solix feed recovery succeeded: %s", mode_label)
+        logging.warning("Battery feed recovery succeeded: %s", mode_label)
         return f"auto-recovery attempted ({mode_label})"
     except (OSError, subprocess.SubprocessError) as err:
         age_label = "n/a" if age_seconds is None else f"{age_seconds:.1f}s"
-        logging.warning("Solix feed auto-recovery failed (age=%s, mode=%s): %s", age_label, mode_label, err)
+        logging.warning("Battery feed auto-recovery failed (age=%s, mode=%s): %s", age_label, mode_label, err)
         return f"auto-recovery failed ({mode_label}): {err}"
 
 
@@ -422,17 +462,19 @@ def safe_float(value, lo=None, hi=None):
     return parsed
 
 
-def read_solix_rows(now_ts):
+def read_battery_csv_rows(now_ts):
+    """Read battery telemetry CSV rows. Supports both solix-monitor and lfp-monitor CSV formats."""
     cutoff_ts = now_ts - (HISTORY_LOOKBACK_DAYS * 86400.0)
     now_date = datetime.fromtimestamp(now_ts, tz=timezone.utc).date()
     min_date = now_date - timedelta(days=HISTORY_LOOKBACK_DAYS)
-
-    pattern = os.path.join(SOLIX_LOG_DIR, "solix-*.csv")
+    prefix = BATTERY_CSV_PREFIX  # e.g. "solix" or "battery"
+    pattern = os.path.join(BATTERY_CSV_DIR, f"{prefix}-*.csv")
     files = sorted(glob.glob(pattern))
     dedup = {}
+    date_re = re.compile(rf"^{re.escape(prefix)}-(\d{{4}}-\d{{2}}-\d{{2}})\.csv$")
     for path in files:
         basename = os.path.basename(path)
-        match = re.match(r"^solix-(\d{4}-\d{2}-\d{2})\.csv$", basename)
+        match = date_re.match(basename)
         if not match:
             continue
         try:
@@ -441,7 +483,6 @@ def read_solix_rows(now_ts):
             continue
         if file_date < min_date:
             continue
-
         try:
             with open(path, "r", encoding="utf-8", newline="") as handle:
                 reader = csv.DictReader((line.replace("\x00", "") for line in handle))
@@ -449,15 +490,24 @@ def read_solix_rows(now_ts):
                     ts = parse_iso_timestamp(row.get("timestamp"))
                     if ts is None or ts < cutoff_ts or ts > (now_ts + 60.0):
                         continue
+                    # solix-monitor uses total_output_w/total_input_w
+                    # lfp-monitor uses load_w/solar_input_w directly
+                    load_w = safe_float(row.get("load_w") or row.get("total_output_w"), lo=0.0)
+                    charge_w = safe_float(row.get("solar_input_w") or row.get("total_input_w"), lo=0.0)
                     dedup[ts] = {
                         "ts": ts,
-                        "load_w": safe_float(row.get("total_output_w"), lo=0.0),
-                        "charge_w": safe_float(row.get("total_input_w"), lo=0.0),
+                        "load_w": load_w,
+                        "charge_w": charge_w,
                         "soc_pct": safe_float(row.get("soc_pct"), lo=0.0, hi=100.0),
                     }
         except OSError:
             continue
     return [dedup[key] for key in sorted(dedup.keys())]
+
+
+# Keep old name as alias for any external callers.
+def read_solix_rows(now_ts):
+    return read_battery_csv_rows(now_ts)
 
 
 def build_binned_window(rows, start_ts, end_ts, bin_seconds, vllm_rows=None):
@@ -638,11 +688,11 @@ def bootstrap_history_db(now_ts=None):
     end_ts = now_ts + 60.0
 
     try:
-        solix_count = HISTORY_DB.count_solix_rows(start_ts, end_ts)
+        solix_count = HISTORY_DB.count_battery_rows(start_ts, end_ts)
         if solix_count <= 0:
             rows = read_solix_rows(now_ts)
-            imported = HISTORY_DB.import_solix_rows(rows)
-            logging.info("bootstrapped sqlite history with %d Solix CSV rows", imported)
+            imported = HISTORY_DB.import_battery_rows(rows)
+            logging.info("bootstrapped sqlite history with %d battery CSV rows", imported)
 
         vllm_count = HISTORY_DB.count_vllm_rows(start_ts, end_ts)
         if vllm_count <= 0 and VLLM_LOG_DIR:
@@ -766,7 +816,7 @@ def read_power_watts():
                     sticky_extra.update(err.extra)
                 err_text = str(err)
                 if "esphome solix reading stale by" not in err_text:
-                    recovery_note = maybe_recover_solix_feed(reason=f"esphome read failure: {err_text}")
+                    recovery_note = maybe_recover_battery_feed(reason=f"esphome read failure: {err_text}")
                     error_detail = f"{error_detail} ({recovery_note})"
             errors.append(error_detail)
 
@@ -813,12 +863,11 @@ def sample_once():
 
         def clear_solix_live_fields():
             for key in (
-                "solix_solar_input_w",
-                "solix_total_input_w",
-                "solix_voltage_mv",
-                "solix_temp_c",
-                "solix_reading_ts",
-                "solix_charging_status",
+                "battery_solar_input_w", "battery_total_input_w", "battery_voltage_mv",
+                "battery_temp_c", "battery_reading_ts", "battery_charging_status",
+                "battery_effective_solar_w",
+                "solix_solar_input_w", "solix_total_input_w", "solix_voltage_mv",
+                "solix_temp_c", "solix_reading_ts", "solix_charging_status",
                 "solix_effective_solar_w",
                 "power_reading_ts",
             ):
@@ -841,24 +890,28 @@ def sample_once():
             current["power_rails_watts"] = next_state["power_rails_watts"]
         if "power_backend" in next_state:
             current["power_backend"] = next_state["power_backend"]
-        for k in ("solix_soc_pct", "solix_solar_input_w", "solix_total_input_w", "solix_voltage_mv", "solix_temp_c", "solix_reading_ts", "solix_charging_status"):
+        for k in (
+            "battery_soc_pct", "battery_solar_input_w", "battery_total_input_w",
+            "battery_voltage_mv", "battery_temp_c", "battery_reading_ts",
+            "battery_charging_status", "battery_capacity_wh",
+            "solix_soc_pct", "solix_solar_input_w", "solix_total_input_w",
+            "solix_voltage_mv", "solix_temp_c", "solix_reading_ts", "solix_charging_status",
+        ):
             if k in next_state:
                 current[k] = next_state[k]
 
-        # Option C: at 100% SOC the Solix reports 0W solar input (charge controller
-        # stops accepting charge) but solar is still powering the load via pass-through.
-        # Effective solar = load watts when full and solar reads zero.
-        _soc = current.get("solix_soc_pct")
-        _solar = current.get("solix_solar_input_w")
+        # At 100% SOC some charge controllers report 0W solar input (charge stopped)
+        # but solar is still powering the load via pass-through. Effective solar = load.
+        _soc = current.get("battery_soc_pct") or current.get("solix_soc_pct")
+        _solar = current.get("battery_solar_input_w") or current.get("solix_solar_input_w")
         _load = current.get("estimated_total_watts")
-        if _soc is not None and _soc >= 100 and _solar == 0 and _load is not None:
-            current["solix_effective_solar_w"] = _load
-        else:
-            current["solix_effective_solar_w"] = _solar
+        _effective = _load if (_soc is not None and _soc >= 100 and _solar == 0 and _load is not None) else _solar
+        current["battery_effective_solar_w"] = _effective
+        current["solix_effective_solar_w"] = _effective
 
         if measured_server_watts is not None:
             if power_is_wall_total:
-                current["power_reading_ts"] = current.get("solix_reading_ts") or time.time()
+                current["power_reading_ts"] = current.get("battery_reading_ts") or current.get("solix_reading_ts") or time.time()
                 wall_total_watts = measured_server_watts
                 current["measured_server_watts"] = None
                 current["measured_gpu_watts"] = None

@@ -2,7 +2,7 @@ export const FEEDBACK_PATH = "/v1/feedback";
 export const SETTINGS_KEY = "bartleby-remote-settings-v1";
 export const TURN_COUNT_KEY = "bartleby-remote-turn-count-v1";
 export const DEFAULT_BASE_URL = "https://api.bartlebygpt.org";
-export const ECO_BASE_URL = "https://eco.bartlebygpt.org";
+export const ECO_BASE_URL = "";
 export const MODEL_MAX_CONTEXT_TOKENS = 2048;
 export const CHARS_PER_TOKEN_ESTIMATE = 2.6;
 export const TOKEN_SAFETY_MARGIN = 32;
@@ -111,6 +111,26 @@ export const POWER_PROFILES = {
             `<p><strong>Watts </strong> is the live total DC output, measured every two seconds from the C300X's battery management system over Bluetooth. A box or ceiling fan pulls 50–75W, a MacBook Air streaming video pulls 20–30W, and a standard LED/CFL room lightbulb pulls 10–15W.</p>`,
             `<p><strong>Solar </strong> is the live solar input to the battery, also read directly from the C300X. When solar input exceeds total draw, the battery is gaining charge and the server is running on pure sunlight. When it's dark or overcast, the Pi is powered by the battery.</p>`,
             `<p>Because this deployment is solar-charged, its operational electricity cost and carbon footprint is approximately zero. This does not include the carbon cost in manufacturing and distributing the Pi, the battery, the solar panels, your device, and the network infrastructure from your device to the Pi and back.</p>`,
+          ].join(""),
+        },
+        "jetson-solar-lfp": {
+          label: "Solar LFP (Jetson Orin Nano Super 8GB)",
+          costMode: "per-kwh",
+          overheadMultiplier: 1.0,
+          defaults: {
+            wattsIdle: 7.5,
+            wattsActive: 21,
+            gco2PerWh: 0.00,
+            costPerKwh: 0.00,
+          },
+          modalHtml: [
+            `<p>BartlebyGPT is a satire, but the infrastructure enacts a different critique. The power data is genuine, as it is running an open, sovereign, on-the-box AI with off-the-grid solar. The closed-loop system is running in San Diego on a ultra-low power edge computer powered by a solar battery setup, connected via 4G with Wi-Fi backup.</p>`,
+            `<p><strong>Materials: </strong>A NVIDIA Jetson Orin Nano Super plugs into a Victron SmartSolar MPPT 100/20 charge controller, which manages a 12V 100Ah LFP battery (1280Wh capacity) fed by a solar panel. The Jetson pulls roughly 8W at idle and up to ~21W under inference load.</p>`,
+            `<p><strong>Software: </strong> The LLM is <a href="https://huggingface.co/staeiou/bartleby-qwen3-1.7b_v4">an open-weight 1.7B model</a> I fine-tuned with Alibaba's <a href="https://huggingface.co/Qwen/Qwen3-1.7B">Qwen3-1.7B</a> using <a href="https://huggingface.co/unsloth/Qwen3-1.7B-GGUF">Unsloth</a>, served via <a href="https://github.com/vllm-project/vllm">vLLM</a>.</p>`,
+            `<p><strong>% battery </strong> is derived from the battery's remaining capacity in amp-hours, read live from the JBD BMS over BLE. The background color is also a battery meter: the lower the battery, the more of the background is grey.</p>`,
+            `<p><strong>Watts </strong> is the live load output measured from the Victron charge controller. A box or ceiling fan pulls 50-75W, a MacBook Air streaming video pulls 20-30W, and a standard LED/CFL room lightbulb pulls 10-15W.</p>`,
+            `<p><strong>Solar </strong> is the live solar input from the Victron charge controller. When solar input exceeds total draw, the battery is gaining charge and the server is running on pure sunlight. When it's dark or overcast, the Jetson is powered by the battery.</p>`,
+            `<p>Because this deployment is solar-charged, its operational electricity cost and carbon footprint is approximately zero. This does not include the carbon cost in manufacturing and distributing the Jetson, battery, solar panel, your device, and network infrastructure.</p>`,
           ].join(""),
         },
         "spokane-dc": {

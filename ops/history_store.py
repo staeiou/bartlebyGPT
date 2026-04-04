@@ -7,7 +7,7 @@ from statistics import median
 
 
 SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS solix_events (
+CREATE TABLE IF NOT EXISTS battery_events (
     reading_ts_ms INTEGER PRIMARY KEY,
     ts REAL NOT NULL,
     load_w REAL,
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS solix_events (
     charging_status INTEGER
 );
 
-CREATE INDEX IF NOT EXISTS idx_solix_events_ts ON solix_events(ts);
+CREATE INDEX IF NOT EXISTS idx_battery_events_ts ON battery_events(ts);
 
 CREATE TABLE IF NOT EXISTS vllm_samples (
     sample_ts_ms INTEGER PRIMARY KEY,
@@ -56,7 +56,7 @@ def align_window_end(now_ts, bin_seconds):
     return math.floor(float(now_ts) / float(bin_seconds)) * float(bin_seconds)
 
 
-def build_median_binned_window(solix_rows, vllm_rows, start_ts, end_ts, bin_seconds):
+def build_median_binned_window(battery_rows, vllm_rows, start_ts, end_ts, bin_seconds):
     if end_ts <= start_ts:
         return {
             "window_start_ts": int(start_ts),
@@ -77,7 +77,7 @@ def build_median_binned_window(solix_rows, vllm_rows, start_ts, end_ts, bin_seco
         for _ in range(bin_count)
     ]
 
-    for row in solix_rows:
+    for row in battery_rows:
         ts = row.get("ts")
         if ts is None or ts < start_ts or ts >= end_ts:
             continue
@@ -140,7 +140,7 @@ class SQLiteHistoryStore:
         self._initialize()
 
     def _ensure_shared_permissions(self):
-        # The Jetson stack runs telemetry as root and solix-monitor as ubuntu.
+        # The Jetson stack runs telemetry as root and the battery monitor as ubuntu.
         # Make the DB and SQLite sidecars writable by both service users.
         for candidate in (
             self.db_path,
@@ -163,10 +163,19 @@ class SQLiteHistoryStore:
         with self._connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
+            # Migrate legacy solix_events table name if present.
+            tables = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            if "solix_events" in tables and "battery_events" not in tables:
+                conn.execute("ALTER TABLE solix_events RENAME TO battery_events")
             conn.executescript(SCHEMA_SQL)
         self._ensure_shared_permissions()
 
-    def record_solix_event(
+    def record_battery_event(
         self,
         *,
         reading_ts,
@@ -182,7 +191,7 @@ class SQLiteHistoryStore:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT OR REPLACE INTO solix_events (
+                INSERT OR REPLACE INTO battery_events (
                     reading_ts_ms,
                     ts,
                     load_w,
@@ -208,6 +217,10 @@ class SQLiteHistoryStore:
             )
         self._ensure_shared_permissions()
 
+    # Backwards-compatible alias — remove once all callers are updated.
+    def record_solix_event(self, **kwargs):
+        return self.record_battery_event(**kwargs)
+
     def record_vllm_sample(self, *, sample_ts, requests_running, requests_waiting, requests_completed):
         sample_ts = float(sample_ts)
         with self._connect() as conn:
@@ -231,10 +244,10 @@ class SQLiteHistoryStore:
             )
         self._ensure_shared_permissions()
 
-    def count_solix_rows(self, start_ts, end_ts):
+    def count_battery_rows(self, start_ts, end_ts):
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT COUNT(*) AS count FROM solix_events WHERE ts >= ? AND ts < ?",
+                "SELECT COUNT(*) AS count FROM battery_events WHERE ts >= ? AND ts < ?",
                 (float(start_ts), float(end_ts)),
             ).fetchone()
         return int(row["count"] or 0)
@@ -247,7 +260,7 @@ class SQLiteHistoryStore:
             ).fetchone()
         return int(row["count"] or 0)
 
-    def import_solix_rows(self, rows):
+    def import_battery_rows(self, rows):
         payload = [
             (
                 _to_millis(row["ts"]),
@@ -268,7 +281,7 @@ class SQLiteHistoryStore:
         with self._connect() as conn:
             conn.executemany(
                 """
-                INSERT OR IGNORE INTO solix_events (
+                INSERT OR IGNORE INTO battery_events (
                     reading_ts_ms,
                     ts,
                     load_w,
@@ -284,6 +297,10 @@ class SQLiteHistoryStore:
             )
         self._ensure_shared_permissions()
         return len(payload)
+
+    # Backwards-compatible alias — remove once all callers are updated.
+    def import_solix_rows(self, rows):
+        return self.import_battery_rows(rows)
 
     def import_vllm_rows(self, rows):
         payload = [
@@ -315,12 +332,12 @@ class SQLiteHistoryStore:
         self._ensure_shared_permissions()
         return len(payload)
 
-    def fetch_solix_rows(self, start_ts, end_ts):
+    def fetch_battery_rows(self, start_ts, end_ts):
         with self._connect() as conn:
             rows = conn.execute(
                 """
                 SELECT ts, load_w, charge_w, soc_pct
-                FROM solix_events
+                FROM battery_events
                 WHERE ts >= ? AND ts < ?
                 ORDER BY ts ASC
                 """,
@@ -335,6 +352,10 @@ class SQLiteHistoryStore:
             }
             for row in rows
         ]
+
+    # Backwards-compatible alias — remove once all callers are updated.
+    def fetch_solix_rows(self, start_ts, end_ts):
+        return self.fetch_battery_rows(start_ts, end_ts)
 
     def fetch_vllm_rows(self, start_ts, end_ts):
         with self._connect() as conn:
@@ -366,7 +387,7 @@ class SQLiteHistoryStore:
         overall_start = min(start_24h, start_7d)
         overall_end = max(end_24h, end_7d)
 
-        solix_rows = self.fetch_solix_rows(overall_start, overall_end)
+        battery_rows = self.fetch_battery_rows(overall_start, overall_end)
         vllm_rows = self.fetch_vllm_rows(overall_start, overall_end)
 
         return {
@@ -375,18 +396,18 @@ class SQLiteHistoryStore:
             "lookback_days": int(lookback_days),
             "source": "sqlite_history",
             "bin_statistic": "median",
-            "rows_considered": len(solix_rows) + len(vllm_rows),
-            "solix_rows_considered": len(solix_rows),
+            "rows_considered": len(battery_rows) + len(vllm_rows),
+            "battery_rows_considered": len(battery_rows),
             "vllm_rows_considered": len(vllm_rows),
             "history_24h": build_median_binned_window(
-                solix_rows=solix_rows,
+                battery_rows=battery_rows,
                 vllm_rows=vllm_rows,
                 start_ts=start_24h,
                 end_ts=end_24h,
                 bin_seconds=bin_24h_seconds,
             ),
             "history_7d": build_median_binned_window(
-                solix_rows=solix_rows,
+                battery_rows=battery_rows,
                 vllm_rows=vllm_rows,
                 start_ts=start_7d,
                 end_ts=end_7d,

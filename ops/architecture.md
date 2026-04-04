@@ -102,14 +102,10 @@ solar display, battery time-remaining calculation, and history charts remain cor
 
 Current profiles:
 
-- `eco-jetson`: Jetson Orin Nano Super 8GB stack and eco hostname defaults.
+- `api-jetson`: Jetson Orin Nano Super 8GB — vLLM AWQ, Anker Solix C300X DC BLE telemetry (288Wh), web app, managed cloudflared.
+- `jetson-solar-lfp`: Jetson Orin Nano Super 8GB — vLLM AWQ, LFP12100EK BMS + Victron SmartSolar MPPT BLE telemetry (1200Wh), web app.
 - `home-rtx4000`: home RTX API defaults and no web app serving.
-- `rpi4-llama`: Raspberry Pi 4B llama.cpp/systemd defaults.
-- `rpi4-llama-live`: Raspberry Pi live web+tunnel profile in process mode.
-- `eco-jetson-systemd`: run-stack systemd dispatcher for Jetson bootstrap.
+- `rpi4-llama`: Raspberry Pi 4B llama.cpp/systemd build and install defaults.
+- `rpi4-llama-live`: Raspberry Pi live web+tunnel profile in process mode, Solix BLE telemetry.
 - `rpi4-llama-systemd`: run-stack systemd dispatcher for Pi bootstrap.
 - `rtx-pod-vllm`: pod/container vLLM process-mode profile (no systemd).
-
-Future:
-
-- add additional `pi-*` profiles that keep the same telemetry contract.

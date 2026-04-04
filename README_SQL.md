@@ -65,9 +65,9 @@ Responsibilities:
 
 Tables:
 
-- `solix_events`
+- `battery_events` (migrated from `solix_events` — auto-renamed on first connect)
   - primary key: `reading_ts_ms`
-  - stores `ts`, `load_w`, `charge_w`, `soc_pct`, plus extra Solix fields
+  - stores `ts`, `load_w`, `charge_w`, `soc_pct`, plus extra battery fields
 - `vllm_samples`
   - primary key: `sample_ts_ms`
   - stores `ts`, `requests_running`, `requests_waiting`, `requests_completed`
@@ -85,8 +85,7 @@ Deployment/bootstrap/config:
 
 - `ops/scripts/run-stack.sh`
 - `ops/bootstrap/bootstrap_fresh_box.sh`
-- `ops/bootstrap/bootstrap_solix_monitor.sh`
-- `ops/templates/systemd.solix-monitor.service.tmpl`
+- `ops/templates/systemd.battery-monitor.service.tmpl`
 - `ops/config/profiles/api-jetson.env`
 - `ops/config/profiles/rpi4-llama-live.env`
 
@@ -332,7 +331,6 @@ Validated locally in this branch:
 - shell syntax checks for:
   - `ops/scripts/run-stack.sh`
   - `ops/bootstrap/bootstrap_fresh_box.sh`
-  - `ops/bootstrap/bootstrap_solix_monitor.sh`
 - throwaway SQLite tests for:
   - raw inserts
   - CSV bootstrap
@@ -374,7 +372,7 @@ Inspect live DB row counts:
 python3 - <<'PY'
 import sqlite3
 conn = sqlite3.connect('/opt/bartleby/solix-monitor/logs/history.sqlite3')
-for table in ('solix_events', 'vllm_samples'):
+for table in ('battery_events', 'vllm_samples'):
     print(table, conn.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0])
 PY
 ```

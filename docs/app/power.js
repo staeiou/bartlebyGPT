@@ -18,7 +18,7 @@ export function createPowerController({ elements, state, getSettings }) {
     "7d": "",
   };
   const AUTO_PROFILE_ID = "auto-live";
-  const LAST_SOLIX_SOC_STORAGE_KEY = "bartleby_last_solix_soc_pct";
+  const LAST_SOLIX_SOC_STORAGE_KEY = "bartleby_last_battery_soc_pct";
   const wattsBuffer = []; // {ts, watts} — unique BLE readings, kept 30s
   let wattsBufferLastTs = null;
 
@@ -90,33 +90,22 @@ export function createPowerController({ elements, state, getSettings }) {
   }
 
   function resolveAutoProfileId(settings, payload) {
+    // Backend-driven: trust deployment_profile from telemetry response first.
     const telemetryProfileId = String(payload && payload.deployment_profile ? payload.deployment_profile : "").trim();
     if (telemetryProfileId && POWER_PROFILES[telemetryProfileId]) {
       return telemetryProfileId;
     }
 
+    // Hostname fallback.
     const appHostname = getAppHostname();
-    if (appHostname === "eco.bartlebygpt.org" || appHostname === "apij.bartlebygpt.org") {
-      return "eco-orin";
-    }
-    if (appHostname === "pi.bartlebygpt.org") {
-      return "pi-rpi4";
-    }
-    if (appHostname === "api.bartlebygpt.org") {
-      return "eco-orin";
-    }
+    if (appHostname === "pi.bartlebygpt.org") return "pi-rpi4";
+    if (appHostname === "api.bartlebygpt.org") return "eco-orin";
 
     const effectiveBaseUrl = getEffectiveBaseUrl(settings.baseUrl);
     const hostname = parseHostnameFromBaseUrl(effectiveBaseUrl);
-    if (hostname === "eco.bartlebygpt.org" || hostname === "apij.bartlebygpt.org") {
-      return "eco-orin";
-    }
-    if (hostname === "pi.bartlebygpt.org") {
-      return "pi-rpi4";
-    }
-    if (hostname === "api.bartlebygpt.org") {
-      return "eco-orin";
-    }
+    if (hostname === "pi.bartlebygpt.org") return "pi-rpi4";
+    if (hostname === "api.bartlebygpt.org") return "eco-orin";
+
     return "eco-orin";
   }
 
@@ -157,12 +146,16 @@ export function createPowerController({ elements, state, getSettings }) {
     return Number.isFinite(parsed) ? parsed : null;
   }
 
-  function isSolixProfile(resolution) {
+  function isBatteryProfile(resolution) {
     return Boolean(
       resolution &&
-      (resolution.resolvedProfileId === "pi-rpi4" || resolution.resolvedProfileId === "eco-orin")
+      (resolution.resolvedProfileId === "pi-rpi4" ||
+       resolution.resolvedProfileId === "eco-orin" ||
+       resolution.resolvedProfileId === "jetson-solar-lfp")
     );
   }
+  // compat alias
+  const isSolixProfile = isBatteryProfile;
 
   function normalizeHistoryPoints(windowPayload) {
     const source = windowPayload && Array.isArray(windowPayload.points) ? windowPayload.points : [];
@@ -498,7 +491,7 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
   }
 
   function buildPowerHistoryModalSection(resolution) {
-    if (!isSolixProfile(resolution)) {
+    if (!isBatteryProfile(resolution)) {
       return "";
     }
 
@@ -528,7 +521,7 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
     if (generatedAt) {
       statusLine = `Last refresh: ${generatedAt}${rows !== null ? ` · ${rows} source rows` : ""}`;
     } else if (state.powerHistoryInFlight) {
-      statusLine = "Loading history from local Solix logs...";
+      statusLine = "Loading history from local battery logs...";
     } else if (!state.powerHistoryAvailable) {
       statusLine = "History unavailable on this server yet.";
     }
@@ -626,14 +619,16 @@ ${charts}
       }
 
       const showLiveSolix = payload.watts_is_live && payload.power_measurement_kind === "wall-total";
-      if (isSolixProfile(resolution) && showLiveSolix) {
-        const effectiveSolarW = Number.parseFloat(String(payload.solix_effective_solar_w ?? payload.solix_solar_input_w));
-        const soc = Number.parseFloat(String(payload.solix_soc_pct));
+      if (isBatteryProfile(resolution) && showLiveSolix) {
+        const effectiveSolarW = Number.parseFloat(String(payload.battery_effective_solar_w ?? payload.solix_effective_solar_w ?? payload.battery_solar_input_w ?? payload.solix_solar_input_w));
+        const soc = Number.parseFloat(String(payload.battery_soc_pct ?? payload.solix_soc_pct));
         const hasSolar = Number.isFinite(effectiveSolarW);
         const hasSoc = Number.isFinite(soc);
         const hasDraw = Number.isFinite(totalWatts);
         if (hasSoc && hasDraw) {
-          const CAPACITY_WH = 288;
+          const CAPACITY_WH = Number.isFinite(Number(payload.battery_capacity_wh)) && Number(payload.battery_capacity_wh) > 0
+            ? Number(payload.battery_capacity_wh)
+            : 288;
           if (soc >= 100) {
             html += `<p><strong>Battery:</strong> Full — solar powered (${Math.round(totalWatts)}W load)</p>`;
           } else if (hasSolar) {
@@ -857,10 +852,10 @@ ${charts}
     }
     elements.powerWatts.textContent = formatWattsDisplay(watts);
     elements.wattsLiveDot.hidden = true;
-    if (profileId === "pi-rpi4" || profileId === "eco-orin") {
+    if (isBatteryProfile(resolution)) {
       const cachedSoc = readCachedSolixSoc();
       const hasCachedSoc = Number.isFinite(cachedSoc);
-      document.documentElement.style.setProperty("--solix-battery-fill", hasCachedSoc ? `${cachedSoc}%` : "0%");
+      document.documentElement.style.setProperty("--solix-battery-fill", hasCachedSoc ? `${cachedSoc}%` : "100%");
       elements.batteryBadge.hidden = !hasCachedSoc;
       elements.batteryBadgePct.textContent = hasCachedSoc ? `${Math.round(cachedSoc)}%` : "";
       if (hasCachedSoc) {
@@ -893,12 +888,12 @@ ${charts}
   }
 
   function renderTelemetryPowerDisplay(payload) {
-    const payloadSoc = Number.parseFloat(String(payload.solix_soc_pct));
+    const payloadSoc = Number.parseFloat(String(payload.battery_soc_pct ?? payload.solix_soc_pct));
     if (Number.isFinite(payloadSoc)) {
       writeCachedSolixSoc(payloadSoc);
     }
     if (Number.isFinite(Number(payload.estimated_total_watts))) {
-      wattsBufferPush(Number(payload.estimated_total_watts), payload.solix_reading_ts ?? payload.power_reading_ts);
+      wattsBufferPush(Number(payload.estimated_total_watts), payload.battery_reading_ts ?? payload.solix_reading_ts ?? payload.power_reading_ts);
     }
     const settings = getSettings();
     const resolution = resolvePowerProfile(settings, payload);
@@ -974,10 +969,10 @@ ${charts}
     elements.powerWatts.textContent = formatWattsDisplay(displayWatts);
     elements.wattsLiveDot.hidden = !payload.watts_is_live;
     const isLiveWallTotal = payload.watts_is_live && payload.power_measurement_kind === "wall-total";
-    if (profileId === "pi-rpi4" || profileId === "eco-orin") {
-      const solarW = isLiveWallTotal ? (payload.solix_effective_solar_w ?? payload.solix_solar_input_w) : null;
+    if (isBatteryProfile(resolution)) {
+      const solarW = isLiveWallTotal ? (payload.battery_effective_solar_w ?? payload.solix_effective_solar_w ?? payload.battery_solar_input_w ?? payload.solix_solar_input_w) : null;
       const cachedSoc = readCachedSolixSoc();
-      const soc = isLiveWallTotal ? payload.solix_soc_pct : cachedSoc;
+      const soc = isLiveWallTotal ? (payload.battery_soc_pct ?? payload.solix_soc_pct) : cachedSoc;
       const solarStatusText = window.innerWidth < 540 ? "Solar in: ?W" : "Solar in: ?W (connecting)";
       const batteryStatusText = "Battery status pending";
       elements.powerCo2.textContent = Number.isFinite(Number(solarW)) && solarW !== null ? `Solar: ${solarW}W in` : solarStatusText;

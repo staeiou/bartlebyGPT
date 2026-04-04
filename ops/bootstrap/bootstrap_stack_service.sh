@@ -3,7 +3,7 @@
 # (run-stack.sh) for a selected deployment profile.
 #
 # Typical usage:
-#   sudo PROFILE=eco-jetson ./ops/bootstrap/bootstrap_stack_service.sh
+#   sudo PROFILE=api-jetson ./ops/bootstrap/bootstrap_stack_service.sh
 #   sudo PROFILE=rpi4-llama-live ./ops/bootstrap/bootstrap_stack_service.sh
 
 set -euo pipefail

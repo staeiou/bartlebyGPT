@@ -21,10 +21,6 @@ sudo ./ops/bootstrap/bootstrap_jetson_fast.sh
 
 ## Serve Stack
 
-```bash
-sudo PROFILE=eco-jetson ./ops/scripts/run-stack.sh
-```
-
 For fresh `api.bartlebygpt.org` hosts (managed cloudflared + local Solix BLE):
 
 ```bash
