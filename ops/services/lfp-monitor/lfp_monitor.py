@@ -20,6 +20,7 @@ import logging
 import os
 import glob
 import struct
+import subprocess
 import sys
 import threading
 import time
@@ -47,6 +48,11 @@ for candidate in (SCRIPT_DIR, OPS_DIR):
 
 from history_store import SQLiteHistoryStore
 
+
+class JbdAdapterStuckError(Exception):
+    """Raised when JBD has failed enough consecutive times to warrant a BT stack reset."""
+
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -63,8 +69,11 @@ NOMINAL_AH          = float(os.environ.get("LFP_NOMINAL_AH", "100"))
 RECONNECT_DELAY     = float(os.environ.get("SOLIX_RECONNECT_DELAY", "10"))
 SCAN_TIMEOUT        = max(2.0, float(os.environ.get("SOLIX_SCAN_TIMEOUT", "10")))
 HISTORY_DB_PATH     = os.environ.get("SOLIX_HISTORY_DB_PATH", "").strip()
-VICTRON_ADV_TIMEOUT = float(os.environ.get("VICTRON_ADV_TIMEOUT", "30"))
-JBD_POLL_INTERVAL   = max(5.0, float(os.environ.get("BATTERY_JBD_POLL_INTERVAL", "60")))
+VICTRON_ADV_TIMEOUT    = float(os.environ.get("VICTRON_ADV_TIMEOUT", "30"))
+JBD_POLL_INTERVAL      = max(5.0, float(os.environ.get("BATTERY_JBD_POLL_INTERVAL", "60")))
+# After this many consecutive JBD GATT failures (connect succeeds but no notification),
+# trigger an automatic bluetooth stack reset so the service heals without human intervention.
+JBD_BT_RESET_THRESHOLD = max(1, int(os.environ.get("JBD_BT_RESET_THRESHOLD", "3")))
 
 # JBD GATT
 JBD_CHAR_W = "0000ff02-0000-1000-8000-00805f9b34fb"
@@ -367,8 +376,15 @@ def update_state_victron(solar_w, load_w, battery_voltage_v, charge_state, yield
 
 
 async def jbd_loop(connect_lock: asyncio.Lock, jbd_queue: asyncio.Queue, scanner: BleakScanner):
-    """Polling JBD BMS loop — wait for advertisement, connect under lock, query once, disconnect, sleep."""
+    """Polling JBD BMS loop — wait for advertisement, connect under lock, query once, disconnect, sleep.
+
+    Tracks consecutive failures. After JBD_BT_RESET_THRESHOLD consecutive failures where
+    the device connects but produces no notification (the BMS stuck state), raises
+    JbdAdapterStuckError so ble_thread can perform an automatic BT stack reset.
+    """
     jbd_addr = JBD_ADDR.upper()
+    consecutive_failures = 0
+
     while True:
         # Drain stale entries left over from the previous poll cycle.
         while not jbd_queue.empty():
@@ -390,6 +406,7 @@ async def jbd_loop(connect_lock: asyncio.Lock, jbd_queue: asyncio.Queue, scanner
         # Stop the shared scanner before connecting: running a BleakScanner
         # concurrently with a GATT notify session prevents notifications from
         # arriving on BlueZ. Scanner restarts immediately after disconnect.
+        poll_succeeded = False
         try:
             async with connect_lock:
                 log.info("JBD: pausing scanner for GATT session")
@@ -403,6 +420,7 @@ async def jbd_loop(connect_lock: asyncio.Lock, jbd_queue: asyncio.Queue, scanner
                             parsed = parse_jbd_basic(raw)
                             if parsed:
                                 update_state_jbd(parsed, raw)
+                                poll_succeeded = True
                             else:
                                 log.warning("JBD: bad response len=%s data=%s", len(raw), raw.hex())
                                 with STATE_LOCK:
@@ -428,8 +446,20 @@ async def jbd_loop(connect_lock: asyncio.Lock, jbd_queue: asyncio.Queue, scanner
             with STATE_LOCK:
                 STATE["ble_connected_jbd"] = False
                 STATE["last_error_jbd"] = str(exc)
-            # Short delay for transient connection errors before the next poll sleep.
             await asyncio.sleep(RECONNECT_DELAY)
+
+        if poll_succeeded:
+            consecutive_failures = 0
+        else:
+            consecutive_failures += 1
+            log.warning(
+                "JBD: consecutive failures: %d / %d before BT reset",
+                consecutive_failures, JBD_BT_RESET_THRESHOLD,
+            )
+            if consecutive_failures >= JBD_BT_RESET_THRESHOLD:
+                raise JbdAdapterStuckError(
+                    f"JBD failed {consecutive_failures} consecutive times — triggering BT reset"
+                )
 
         await asyncio.sleep(JBD_POLL_INTERVAL)
 
@@ -520,6 +550,26 @@ async def ble_main():
 # BLE thread
 # ---------------------------------------------------------------------------
 
+def _bt_stack_reset():
+    """Reset the bluetooth stack to clear stuck BMS notification state.
+
+    Runs synchronously — called from ble_thread between ble_main() restarts.
+    Restarts bluetoothd (which resets the HCI adapter and clears all BlueZ
+    device state), then waits for the adapter to re-initialize.
+    """
+    log.warning("BLE: resetting bluetooth stack to recover JBD stuck state ...")
+    try:
+        subprocess.run(
+            ["systemctl", "restart", "bluetooth"],
+            check=True, capture_output=True, text=True, timeout=20,
+        )
+        log.warning("BLE: bluetooth restarted — waiting for adapter to reinitialize")
+        time.sleep(6)
+        log.warning("BLE: bluetooth reset complete, restarting BLE loop")
+    except (OSError, subprocess.SubprocessError) as err:
+        log.error("BLE: bluetooth reset failed: %s — continuing anyway", err)
+
+
 def ble_thread():
     # Single event loop for the lifetime of the process — bleak requires this.
     loop = asyncio.new_event_loop()
@@ -527,6 +577,12 @@ def ble_thread():
     while True:
         try:
             loop.run_until_complete(ble_main())
+        except JbdAdapterStuckError as exc:
+            log.error("BLE: %s", exc)
+            with STATE_LOCK:
+                STATE["ble_connected_jbd"] = False
+                STATE["ble_connected_victron"] = False
+            _bt_stack_reset()
         except Exception as exc:
             log.error("BLE: ble_main exited unexpectedly: %s — restarting in %ss", exc, RECONNECT_DELAY)
             with STATE_LOCK:
