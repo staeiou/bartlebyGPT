@@ -345,6 +345,12 @@ async def jbd_query_once(client: BleakClient, cmd: int, timeout: float = 8.0) ->
 # JBD uses an asyncio.Lock (bleak's recommended pattern for scan+connect
 # serialisation) rather than a custom event + sleep-based timing hack.
 # Victron is advertisement-only (no connection) so it never needs the lock.
+#
+# BlueZ caveat: running a scanner concurrently with a GATT connection
+# (connect + notify) can cause notifications to never arrive. The JBD loop
+# therefore calls scanner.stop() before connecting and scanner.start() after
+# disconnecting. This pauses Victron ads for the ~3-5s JBD session window
+# (well under VICTRON_ADV_TIMEOUT=30s, so no false timeout warnings).
 # ---------------------------------------------------------------------------
 
 def update_state_victron(solar_w, load_w, battery_voltage_v, charge_state, yield_today_wh):
@@ -360,7 +366,7 @@ def update_state_victron(solar_w, load_w, battery_voltage_v, charge_state, yield
         STATE["last_error_victron"] = ""
 
 
-async def jbd_loop(connect_lock: asyncio.Lock, jbd_queue: asyncio.Queue):
+async def jbd_loop(connect_lock: asyncio.Lock, jbd_queue: asyncio.Queue, scanner: BleakScanner):
     """Polling JBD BMS loop — wait for advertisement, connect under lock, query once, disconnect, sleep."""
     jbd_addr = JBD_ADDR.upper()
     while True:
@@ -380,35 +386,40 @@ async def jbd_loop(connect_lock: asyncio.Lock, jbd_queue: asyncio.Queue):
             await asyncio.sleep(JBD_POLL_INTERVAL)
             continue
 
-        # Serialise the connect phase with the lock so two concurrent coroutines
-        # never race on the adapter (matches bleak two_devices.py pattern).
+        # Serialise the connect phase with the lock (bleak two_devices.py pattern).
+        # Stop the shared scanner before connecting: running a BleakScanner
+        # concurrently with a GATT notify session prevents notifications from
+        # arriving on BlueZ. Scanner restarts immediately after disconnect.
         try:
             async with connect_lock:
-                log.info("JBD: connecting...")
-                async with BleakClient(dev, timeout=15.0) as client:
-                    log.info("JBD: connected")
-                    # Lock released here — adapter free for passive Victron scanning
-                    # while the GATT session is open.
-
-                    try:
-                        raw = await jbd_query_once(client, 0x03)
-                        parsed = parse_jbd_basic(raw)
-                        if parsed:
-                            update_state_jbd(parsed, raw)
-                        else:
-                            log.warning("JBD: bad response len=%s data=%s", len(raw), raw.hex())
+                log.info("JBD: pausing scanner for GATT session")
+                await scanner.stop()
+                try:
+                    log.info("JBD: connecting...")
+                    async with BleakClient(dev, timeout=15.0) as client:
+                        log.info("JBD: connected")
+                        try:
+                            raw = await jbd_query_once(client, 0x03)
+                            parsed = parse_jbd_basic(raw)
+                            if parsed:
+                                update_state_jbd(parsed, raw)
+                            else:
+                                log.warning("JBD: bad response len=%s data=%s", len(raw), raw.hex())
+                                with STATE_LOCK:
+                                    STATE["last_error_jbd"] = (
+                                        f"bad response (len={len(raw)} status=0x{raw[2]:02x})"
+                                        if len(raw) >= 3
+                                        else f"bad response (len={len(raw)})"
+                                    )
+                                    STATE["ble_connected_jbd"] = False
+                        except Exception as err:
+                            log.warning("JBD: query error type=%s repr=%r str=%s", type(err).__name__, err, err)
                             with STATE_LOCK:
-                                STATE["last_error_jbd"] = (
-                                    f"bad response (len={len(raw)} status=0x{raw[2]:02x})"
-                                    if len(raw) >= 3
-                                    else f"bad response (len={len(raw)})"
-                                )
+                                STATE["last_error_jbd"] = str(err)
                                 STATE["ble_connected_jbd"] = False
-                    except Exception as err:
-                        log.warning("JBD: query error type=%s repr=%r str=%s", type(err).__name__, err, err)
-                        with STATE_LOCK:
-                            STATE["last_error_jbd"] = str(err)
-                            STATE["ble_connected_jbd"] = False
+                finally:
+                    log.info("JBD: resuming scanner")
+                    await scanner.start()
 
             log.info("JBD: disconnected")
 
@@ -471,7 +482,11 @@ async def victron_loop(victron_queue: asyncio.Queue):
 
 
 async def ble_main():
-    """Single persistent BleakScanner feeds per-device queues. One event loop, no restarts."""
+    """Single persistent BleakScanner feeds per-device queues. One event loop, no restarts.
+
+    The scanner is explicitly stopped/started around each JBD GATT session to avoid
+    the BlueZ issue where concurrent scanning blocks GATT notifications.
+    """
     jbd_addr = JBD_ADDR.upper()
     victron_addr = VICTRON_ADDR.upper()
 
@@ -486,16 +501,19 @@ async def ble_main():
         elif addr == victron_addr:
             victron_queue.put_nowait(adv.manufacturer_data)
 
+    scanner = BleakScanner(on_detection)
     log.info("BLE: starting shared scanner (JBD=%s Victron=%s)", jbd_addr, victron_addr)
+    await scanner.start()
     try:
-        async with BleakScanner(on_detection):
-            await asyncio.gather(
-                jbd_loop(connect_lock, jbd_queue),
-                victron_loop(victron_queue),
-            )
+        await asyncio.gather(
+            jbd_loop(connect_lock, jbd_queue, scanner),
+            victron_loop(victron_queue),
+        )
     except Exception as exc:
-        log.error("BLE: shared scanner fatal error: %s", exc)
+        log.error("BLE: ble_main gather error: %s", exc)
         raise
+    finally:
+        await scanner.stop()
 
 
 # ---------------------------------------------------------------------------
