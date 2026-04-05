@@ -111,6 +111,13 @@ well under `VICTRON_ADV_TIMEOUT=30s`, so no false timeout warnings occur.
 **Single event loop:** bleak requires a single asyncio event loop for the process
 lifetime. `ble_thread()` creates one loop and reuses it across `ble_main()` restarts.
 
+**Why `create_task` instead of bare `gather`:** In Python 3.10, `asyncio.gather` does
+NOT cancel sibling tasks when one raises — they continue as orphaned coroutines on the
+event loop. If `jbd_loop` raises `JbdAdapterStuckError` and `ble_main` restarts, the
+old `victron_loop` would keep running alongside the new one, both writing to shared
+STATE. The fix: `create_task` gives explicit references; `ble_main`'s `finally` block
+cancels and awaits both tasks on every exit path, guaranteed.
+
 ## BLE Recovery
 
 If JBD disappears or GATT notifications stop coming (service reports TimeoutError
