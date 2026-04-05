@@ -326,6 +326,11 @@ def read_esphome_power_watts():
         return payload.get(battery_key) if battery_key in payload else payload.get(solix_key)
 
     reading_ts = _bfield("battery_reading_ts", "solix_reading_ts")
+    power_feed_ts = payload.get("victron_reading_ts")
+    if power_feed_ts is None:
+        power_feed_ts = payload.get("power_reading_ts")
+    if power_feed_ts is None:
+        power_feed_ts = reading_ts
     extra = {
         # canonical battery_* fields
         "battery_soc_pct":        _bfield("battery_soc_pct", "solix_soc_pct"),
@@ -344,6 +349,7 @@ def read_esphome_power_watts():
         "solix_temp_c":           _bfield("battery_temp_c", "solix_temp_c"),
         "solix_reading_ts":       reading_ts,
         "solix_charging_status":  _bfield("battery_charging_status", "solix_charging_status"),
+        "power_feed_reading_ts":  power_feed_ts,
     }
     ble_connected = bool(payload.get("ble_connected"))
     extra["ble_connected"] = ble_connected
@@ -353,16 +359,16 @@ def read_esphome_power_watts():
     if not ble_connected:
         raise EsphomeFeedError("esphome battery feed disconnected", extra=extra)
 
-    reading_ts_f = safe_float(reading_ts, lo=0.0)
-    if SOLIX_STALE_SECONDS > 0 and reading_ts_f is not None:
-        age_seconds = time.time() - reading_ts_f
+    power_feed_ts_f = safe_float(power_feed_ts, lo=0.0)
+    if SOLIX_STALE_SECONDS > 0 and power_feed_ts_f is not None:
+        age_seconds = time.time() - power_feed_ts_f
         if age_seconds > SOLIX_STALE_SECONDS:
             recovery_note = maybe_recover_battery_feed(
-                reason=f"stale battery reading ({age_seconds:.1f}s old)",
+                reason=f"stale power feed reading ({age_seconds:.1f}s old)",
                 age_seconds=age_seconds,
             )
             raise EsphomeFeedError(
-                f"esphome battery reading stale by {age_seconds:.1f}s (>{SOLIX_STALE_SECONDS:.1f}s); {recovery_note}",
+                f"esphome power feed reading stale by {age_seconds:.1f}s (>{SOLIX_STALE_SECONDS:.1f}s); {recovery_note}",
                 extra=extra,
             )
 
@@ -896,6 +902,7 @@ def sample_once():
             "battery_charging_status", "battery_capacity_wh",
             "solix_soc_pct", "solix_solar_input_w", "solix_total_input_w",
             "solix_voltage_mv", "solix_temp_c", "solix_reading_ts", "solix_charging_status",
+            "power_feed_reading_ts",
         ):
             if k in next_state:
                 current[k] = next_state[k]
@@ -911,7 +918,7 @@ def sample_once():
 
         if measured_server_watts is not None:
             if power_is_wall_total:
-                current["power_reading_ts"] = current.get("battery_reading_ts") or current.get("solix_reading_ts") or time.time()
+                current["power_reading_ts"] = current.get("power_feed_reading_ts") or current.get("battery_reading_ts") or current.get("solix_reading_ts") or time.time()
                 wall_total_watts = measured_server_watts
                 current["measured_server_watts"] = None
                 current["measured_gpu_watts"] = None

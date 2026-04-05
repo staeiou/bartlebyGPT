@@ -211,8 +211,8 @@ SERVICE
   "${SUDO[@]}" systemctl restart cloudflared
 }
 
-choose_solix_user() {
-  local candidate="${SOLIX_MONITOR_USER:-}"
+choose_battery_monitor_user() {
+  local candidate="${BATTERY_MONITOR_USER:-${SOLIX_MONITOR_USER:-}}"
   if [[ -n "${candidate}" ]] && id -u "${candidate}" >/dev/null 2>&1; then
     echo "${candidate}"
     return
@@ -267,7 +267,7 @@ install_battery_monitor() {
   fi
 
   local monitor_user
-  monitor_user="$(choose_solix_user)"
+  monitor_user="$(choose_battery_monitor_user)"
 
   # BATTERY_MONITOR_SCRIPT: path to the monitor script in the repo.
   # Defaults to solix_monitor.py for backwards compatibility.
@@ -276,7 +276,7 @@ install_battery_monitor() {
   monitor_script_name="$(basename "${monitor_src}")"
 
   local service_name="${BATTERY_MONITOR_SERVICE_NAME:-solix-monitor}"
-  local workdir="${SOLIX_MONITOR_WORKDIR:-/opt/bartleby/solix-monitor}"
+  local workdir="${BATTERY_MONITOR_WORKDIR:-${SOLIX_MONITOR_WORKDIR:-/opt/bartleby/solix-monitor}}"
   local logs_dir="${SOLIX_CSV_DIR:-${workdir}/logs}"
   local history_db_path="${SOLIX_HISTORY_DB_PATH:-${logs_dir}/history.sqlite3}"
   local ble_addr="${SOLIX_BLE_ADDR:-}"

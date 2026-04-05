@@ -39,6 +39,8 @@ Solar panel → Victron MPPT → [load output → Jetson]
 - `load_w` = `victron.external_device_load` (direct measurement)
 - `solar_w` = `victron.solar_power`
 - `soc_pct` = `jbd.remaining_ah / jbd.nominal_ah × 100` (BMS SOC% is unreliable until several cycles)
+- JBD is queried only for battery-side fields: SOC, voltage, temperature, net current, remaining Ah.
+- Victron remains the source for live solar/load telemetry.
 
 ## Provides
 
@@ -56,7 +58,8 @@ Solar panel → Victron MPPT → [load output → Jetson]
 | `battery_solar_input_w` | Victron | Solar panel input watts |
 | `battery_voltage_mv` | JBD | Battery voltage mV |
 | `battery_temp_c` | JBD | Temperature °C (first sensor) |
-| `battery_reading_ts` | System | Unix timestamp of last JBD reading |
+| `battery_reading_ts` | JBD | Unix timestamp of last successful JBD reading |
+| `victron_reading_ts` | Victron | Unix timestamp of last successful Victron advertisement parse |
 | `battery_capacity_wh` | Config | Nominal capacity (1200Wh) |
 | `battery_remaining_ah` | JBD | Remaining capacity Ah |
 | `battery_net_current_ma` | JBD | Net current mA (+ = charging, - = discharging) |
@@ -85,10 +88,23 @@ VICTRON_ENCRYPTION_KEY=<hex key from VictronConnect → Product info → Encrypt
 | `SOLIX_CSV_DIR` | `./logs` |
 | `SOLIX_CSV_INTERVAL` | `60` |
 | `SOLIX_RECONNECT_DELAY` | `10` |
+| `BATTERY_JBD_POLL_INTERVAL` | `60` |
 
 ## Notes
 
 - Victron data arrives via passive BLE advertisement scanning — no connection required.
-- JBD BMS is polled every 5s via GATT request (command 0x03).
-- CSV files are written as `battery-YYYY-MM-DD.csv` (not `solix-*.csv`).
+- JBD BMS is polled with a one-shot GATT request (`0x03`), then disconnected to avoid holding the BMS open and blocking the phone app.
+- JBD polling interval is `BATTERY_JBD_POLL_INTERVAL`; the Jetson LFP profile currently sets it to `60` seconds.
+- Feed-health semantics matter:
+  - `ble_connected` on `/sensor/power` now means Victron/power-feed health, not "JBD is connected right this instant"
+  - `battery_reading_ts` is JBD freshness only
+  - `victron_reading_ts` is the live power-feed freshness clock
+- `power_telemetry.py` must use Victron/power-feed freshness for stale detection and `power_reading_ts`.
+  Using JBD `battery_reading_ts` for whole-feed staleness is wrong and causes the website to fall back to `jtop` between delayed JBD polls even while Victron watts are still live.
+- The combined telemetry CSV is written as `battery-YYYY-MM-DD.csv`.
+- Every successful JBD read also appends a raw packet log to `jbd-basic-YYYY-MM-DD.csv` with:
+  - full raw packet hex
+  - decoded core values
+  - every payload byte in `b00...`
+- The raw JBD CSV is the best local forensic record short of a live `btmon` capture.
 - `SOLIX_LOG_DIR` in `power_telemetry.py` must point to the lfp-monitor logs dir when using this monitor, and `BATTERY_CSV_PREFIX` should be set to `battery-` so the history reader finds the right files.

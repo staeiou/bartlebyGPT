@@ -8,7 +8,7 @@ Nothing here is served to end users.
 - Edit code in repo paths only (under `bartlebyGPT/`).
 - Treat `/opt/bartleby/*` and `/var/www/bartlebygpt` as deploy outputs.
 - Apply changes with idempotent scripts, not manual file copies into `/opt`.
-- For Solix monitor updates, rerun `ops/bootstrap/bootstrap_fresh_box.sh` so `/opt` is regenerated from repo.
+- For battery monitor updates, rerun `ops/bootstrap/bootstrap_fresh_box.sh` so `/opt` is regenerated from repo.
 
 ## Scope
 
@@ -64,7 +64,7 @@ sudo ./ops/bootstrap/bootstrap_fresh_box.sh \
   --secrets-file /root/bartleby-secrets.env
 ```
 
-Fast idempotent apply for Solix monitor code/config changes:
+Fast idempotent apply for battery monitor code/config changes:
 
 ```bash
 cd /path/to/bartlebyGPT
@@ -201,8 +201,26 @@ Topology: Jetson powered from Victron load output. `load_w = external_device_loa
 SOC is derived from `remaining_ah / nominal_ah` — the BMS-reported SOC% is unreliable on a new battery until several charge cycles complete.
 
 - Logs to `/opt/bartleby/lfp-monitor/logs/battery-YYYY-MM-DD.csv` every 60s
+- Logs raw JBD packets to `/opt/bartleby/lfp-monitor/logs/jbd-basic-YYYY-MM-DD.csv`
 - Requires `VICTRON_ENCRYPTION_KEY` in `/root/bartleby-secrets.env`
 - Installed by `bootstrap_fresh_box.sh` with `ENABLE_BATTERY_MONITOR=1` and `BATTERY_MONITOR_SCRIPT=./ops/services/lfp-monitor/lfp_monitor.py`
+
+Current LFP semantics:
+
+- Victron is the live power source of truth:
+  - `value`
+  - `battery_solar_input_w`
+  - `battery_total_input_w`
+  - `battery_yield_today_wh`
+- JBD is polled for battery-side fields only:
+  - `battery_soc_pct`
+  - `battery_remaining_ah`
+  - `battery_voltage_mv`
+  - `battery_net_current_ma`
+- `ble_connected` on `/sensor/power` means the Victron/power feed is live enough for telemetry, not “JBD is connected right now”
+- `battery_reading_ts` is JBD freshness only
+- `victron_reading_ts` is the power-feed freshness clock
+- `power_telemetry.py` must use Victron/power-feed freshness for stale detection; using JBD timestamps for whole-feed staleness is wrong and causes false fallback to `jtop`
 
 Manage: `sudo systemctl {start,stop,restart,status} lfp-monitor`
 
@@ -220,6 +238,7 @@ On headless Jetson deployments, unused audio and camera kernel modules waste sig
 - Power telemetry backend options:
   - `TELEMETRY_POWER_BACKEND=esphome` + `TELEMETRY_ESPHOME_POWER_URL=http://<plug-ip>/sensor/power` for smart plug (WiFi)
   - Battery monitor deployments (`api-jetson`, `rpi4-llama-live`, `jetson-solar-lfp`) expose an ESPHome-compatible `/sensor/power` shim at `http://127.0.0.1:18082/sensor/power` consumed by `power_telemetry.py`. All monitors emit both `battery_*` (canonical) and `solix_*` (compat) field names.
+  - For `jetson-solar-lfp`, wall-total power comes from Victron, not JBD. Treat JBD fields as battery metadata, not the live watt-feed clock.
 - `run-stack.sh` process mode is best for pod/container and for live web+tunnel foreground runs.
 - Pi systemd scripts are best for persistent inference service management on bare metal.
 - `STACK_MODE=systemd` in `run-stack.sh` is a dispatcher for bootstrap scripts, not a full-systemd replacement for every component.

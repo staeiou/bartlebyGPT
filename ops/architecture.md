@@ -4,7 +4,9 @@
 
 1. `vLLM` serves model inference on local port (`VLLM_PORT`, default `8000`).
    - Raspberry Pi path can use `llama-server` on the same local port.
-2. `solix-monitor` (optional) reads Solix BLE and serves `/sensor/power` shim on `127.0.0.1:18082`.
+2. Battery monitor service (optional) serves `/sensor/power` shim on `127.0.0.1:18082`.
+   - `solix-monitor` for Anker Solix deployments
+   - `lfp-monitor` for JBD BMS + Victron deployments
 3. `power_telemetry.py` samples power + load and serves `/telemetry/power`.
 4. `nginx` fronts public port (`PUBLIC_PORT`, default `18201`) and proxies:
    - `/v1/*` -> vLLM
@@ -23,6 +25,10 @@
 - `jtop` / `nvidia-smi`: component load power (telemetry derives wall estimate with base + multiplier).
 - `esphome`: direct wall-total watts from a smart plug endpoint (for example, `/sensor/power`).
 - `solix-monitor`: Anker Solix C300X DC battery read directly over BLE by `solix-monitor.service` (source: `ops/services/solix-monitor/`). Exposes an ESPHome-compatible `/sensor/power` shim at `http://127.0.0.1:18082/sensor/power`. Used on both deployments. Auto-detects plaintext TLV vs ECDH-encrypted firmware. See `ops/runbooks/solix-ble.md`.
+- `lfp-monitor`: split-source battery monitor for `jetson-solar-lfp`.
+  - Victron SmartSolar BLE advertisements provide live wall/load and solar input
+  - JBD BMS BLE GATT polling provides battery-side fields (SOC, Ah, voltage, current)
+  - telemetry must treat Victron freshness as the wall-power freshness clock, not JBD freshness
 
 ## Control Plane
 
@@ -74,7 +80,26 @@ All deployments emit the same JSON shape from `/telemetry/power`:
 | `is_active` | `true` when `requests_running > 0`. |
 | `cost_share_fraction` | Reserved for multi-tenant cost attribution (always `1.0` currently). |
 
-**Solix BLE fields** (present on Solix-backed deployments; `null` otherwise)
+**Battery monitor fields** (`battery_*` canonical; `solix_*` kept as compat aliases)
+
+On Solix deployments these come from one device. On `jetson-solar-lfp` they are split:
+
+- live power/load/solar from Victron
+- battery-side state from JBD
+
+| Field | Description |
+|-------|-------------|
+| `battery_soc_pct` | SOC %. On LFP/JBD deployments this is Ah-derived from the BMS packet. |
+| `battery_solar_input_w` | Solar input watts. On LFP deployment this is Victron live data. |
+| `battery_effective_solar_w` | Corrected solar for pass-through/full-charge cases. |
+| `battery_total_input_w` | Total battery input watts. |
+| `battery_voltage_mv` | Battery voltage mV. |
+| `battery_temp_c` | Battery temperature °C. |
+| `battery_charging_status` | Charging mode/status. On LFP deployment this is from Victron charge state. |
+| `battery_reading_ts` | Timestamp of last successful battery-side reading. On LFP deployment this is JBD freshness only. |
+| `solix_*` | Compatibility aliases for older frontend/telemetry code paths. |
+
+**Solix BLE fields** (legacy/compat naming, still populated)
 
 | Field | Description |
 |-------|-------------|
@@ -87,6 +112,8 @@ All deployments emit the same JSON shape from `/telemetry/power`:
 | `solix_charging_status` | Raw uint8 from tag `0xb6` — transitions logged to journalctl. Meaning under reverse engineering. |
 | `solix_reading_ts` | Unix timestamp of the BLE packet. |
 
+On `jetson-solar-lfp`, `solix_*` aliases are filled from the `battery_*` fields for compatibility only.
+
 **Metadata**
 
 | Field | Description |
@@ -95,8 +122,14 @@ All deployments emit the same JSON shape from `/telemetry/power`:
 | `source` | Human-readable source string (e.g. `"esphome+vllm"`). |
 | `last_error` | Most recent sampling error string; empty on success. |
 
-The frontend uses `solix_effective_solar_w` (falling back to `solix_solar_input_w`) so that the
-solar display, battery time-remaining calculation, and history charts remain correct at 100% SOC.
+The frontend uses `battery_effective_solar_w` / `solix_effective_solar_w` so that solar display,
+battery time-remaining calculation, and history charts remain correct at 100% SOC.
+
+Important for `jetson-solar-lfp`:
+
+- `power_reading_ts` must follow the live Victron/power feed timestamp
+- JBD `battery_reading_ts` must remain separate
+- if telemetry uses JBD freshness for whole-feed stale detection, it will incorrectly fall back to `jtop` while Victron is still live
 
 ## Deployment Profiles
 

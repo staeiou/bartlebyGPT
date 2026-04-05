@@ -18,6 +18,7 @@ import csv
 import json
 import logging
 import os
+import glob
 import struct
 import sys
 import threading
@@ -63,6 +64,7 @@ RECONNECT_DELAY     = float(os.environ.get("SOLIX_RECONNECT_DELAY", "10"))
 SCAN_TIMEOUT        = max(2.0, float(os.environ.get("SOLIX_SCAN_TIMEOUT", "10")))
 HISTORY_DB_PATH     = os.environ.get("SOLIX_HISTORY_DB_PATH", "").strip()
 VICTRON_ADV_TIMEOUT = float(os.environ.get("VICTRON_ADV_TIMEOUT", "30"))
+JBD_POLL_INTERVAL   = max(5.0, float(os.environ.get("BATTERY_JBD_POLL_INTERVAL", "60")))
 
 # JBD GATT
 JBD_CHAR_W = "0000ff02-0000-1000-8000-00805f9b34fb"
@@ -73,6 +75,18 @@ CSV_FIELDS = [
     "solar_input_w", "load_w", "remaining_ah", "nominal_ah",
     "net_current_ma", "charge_state", "ble_connected_jbd", "ble_connected_victron",
 ]
+JBD_DEBUG_FIELDS = [
+    "timestamp",
+    "reading_ts",
+    "raw_hex",
+    "payload_len",
+    "voltage_mv",
+    "net_current_ma",
+    "remaining_ah",
+    "nominal_ah",
+    "soc_pct_derived",
+    "temp_c",
+] + [f"b{i:02d}" for i in range(64)]
 
 STATE_LOCK = threading.Lock()
 STATE = {
@@ -87,6 +101,8 @@ STATE = {
     "charge_state": None,
     "ble_connected_jbd": False,
     "ble_connected_victron": False,
+    "jbd_reading_ts": None,
+    "victron_reading_ts": None,
     # Solar / load (Victron)
     "solar_input_w": None,
     "load_w": None,
@@ -149,7 +165,81 @@ def parse_jbd_basic(data: bytes):
     }
 
 
-def update_state_jbd(parsed: dict):
+def append_jbd_debug_row(reading_ts: float, raw: bytes, parsed: dict):
+    CSV_DIR.mkdir(parents=True, exist_ok=True)
+    ts = datetime.fromtimestamp(reading_ts, tz=timezone.utc)
+    payload = raw[4:4 + raw[3]] if len(raw) >= 4 and raw[0] == 0xDD else b""
+    row = {
+        "timestamp": ts.isoformat(),
+        "reading_ts": f"{reading_ts:.6f}",
+        "raw_hex": raw.hex(),
+        "payload_len": len(payload),
+        "voltage_mv": parsed.get("voltage_mv"),
+        "net_current_ma": parsed.get("net_current_ma"),
+        "remaining_ah": parsed.get("remaining_ah"),
+        "nominal_ah": parsed.get("nominal_ah"),
+        "soc_pct_derived": parsed.get("soc_pct"),
+        "temp_c": parsed.get("temp_c"),
+    }
+    for idx in range(64):
+        row[f"b{idx:02d}"] = payload[idx] if idx < len(payload) else ""
+    csv_path = CSV_DIR / f"jbd-basic-{ts.strftime('%Y-%m-%d')}.csv"
+    write_header = not csv_path.exists() or csv_path.stat().st_size == 0
+    with open(csv_path, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=JBD_DEBUG_FIELDS)
+        if write_header:
+            writer.writeheader()
+        writer.writerow(row)
+
+
+def _safe_csv_float(value):
+    try:
+        if value is None or value == "":
+            return None
+        parsed = float(value)
+        return parsed
+    except (TypeError, ValueError):
+        return None
+
+
+def restore_last_jbd_state_from_logs():
+    pattern = str(CSV_DIR / "jbd-basic-*.csv")
+    latest_row = None
+    latest_ts = None
+    for path in sorted(glob.glob(pattern)):
+        try:
+            with open(path, "r", encoding="utf-8", newline="") as handle:
+                reader = csv.DictReader((line.replace("\x00", "") for line in handle))
+                for row in reader:
+                    reading_ts = _safe_csv_float(row.get("reading_ts"))
+                    if reading_ts is None:
+                        continue
+                    if latest_ts is None or reading_ts > latest_ts:
+                        latest_ts = reading_ts
+                        latest_row = row
+        except OSError as err:
+            log.warning("JBD startup restore read failed for %s: %s", path, err)
+
+    if latest_row is None or latest_ts is None:
+        return
+
+    restored = {
+        "timestamp": latest_ts,
+        "jbd_reading_ts": latest_ts,
+        "soc_pct": _safe_csv_float(latest_row.get("soc_pct_derived")),
+        "voltage_mv": _safe_csv_float(latest_row.get("voltage_mv")),
+        "net_current_ma": _safe_csv_float(latest_row.get("net_current_ma")),
+        "remaining_ah": _safe_csv_float(latest_row.get("remaining_ah")),
+        "nominal_ah": _safe_csv_float(latest_row.get("nominal_ah")) or NOMINAL_AH,
+        "temp_c": _safe_csv_float(latest_row.get("temp_c")),
+        "ble_connected_jbd": False,
+    }
+    with STATE_LOCK:
+        STATE.update(restored)
+    log.info("JBD: restored last-good reading from logs at ts=%.3f", latest_ts)
+
+
+def update_state_jbd(parsed: dict, raw: bytes):
     soc = parsed["soc_pct"]
     voltage_mv = parsed["voltage_mv"]
     hours_remaining = None
@@ -167,6 +257,7 @@ def update_state_jbd(parsed: dict):
     with STATE_LOCK:
         STATE.update({
             "timestamp": now,
+            "jbd_reading_ts": now,
             "soc_pct": soc,
             "voltage_mv": parsed["voltage_mv"],
             "net_current_ma": parsed["net_current_ma"],
@@ -177,6 +268,11 @@ def update_state_jbd(parsed: dict):
             "ble_connected_jbd": True,
             "last_error_jbd": "",
         })
+
+    try:
+        append_jbd_debug_row(now, raw, parsed)
+    except OSError as err:
+        log.warning("JBD debug CSV write failed: %s", err)
 
     if HISTORY_DB is not None:
         with STATE_LOCK:
@@ -239,7 +335,7 @@ def _jbd_adapter_event() -> asyncio.Event:
 
 
 async def jbd_loop():
-    """Persistent JBD BMS polling loop — reconnects on failure."""
+    """Polling JBD BMS loop — connect, query once, disconnect, then sleep."""
     ev = _jbd_adapter_event()
     while True:
         try:
@@ -259,23 +355,19 @@ async def jbd_loop():
             async with BleakClient(dev, timeout=15.0) as client:
                 ev.clear()  # connected — Victron may resume scanning
                 log.info("JBD: connected")
-                while client.is_connected:
-                    try:
-                        raw = await jbd_query_once(client, 0x03)
-                        parsed = parse_jbd_basic(raw)
-                        if parsed:
-                            update_state_jbd(parsed)
-                        else:
-                            log.warning("JBD: bad response: %s", raw.hex())
-                    except Exception as err:
-                        log.warning("JBD: query error: %s", err)
-                        with STATE_LOCK:
-                            STATE["last_error_jbd"] = str(err)
-                    await asyncio.sleep(5.0)
+                try:
+                    raw = await jbd_query_once(client, 0x03)
+                    parsed = parse_jbd_basic(raw)
+                    if parsed:
+                        update_state_jbd(parsed, raw)
+                    else:
+                        log.warning("JBD: bad response: %s", raw.hex())
+                except Exception as err:
+                    log.warning("JBD: query error: %s", err)
+                    with STATE_LOCK:
+                        STATE["last_error_jbd"] = str(err)
 
-            log.warning("JBD: disconnected")
-            with STATE_LOCK:
-                STATE["ble_connected_jbd"] = False
+            log.info("JBD: disconnected")
 
         except Exception as exc:
             log.warning("JBD: error: %s — retrying in %ss", exc, RECONNECT_DELAY)
@@ -284,7 +376,7 @@ async def jbd_loop():
                 STATE["last_error_jbd"] = str(exc)
 
         ev.clear()
-        await asyncio.sleep(RECONNECT_DELAY)
+        await asyncio.sleep(JBD_POLL_INTERVAL)
 
 
 # ---------------------------------------------------------------------------
@@ -292,16 +384,16 @@ async def jbd_loop():
 # ---------------------------------------------------------------------------
 
 def update_state_victron(solar_w, load_w, battery_voltage_v, charge_state, yield_today_wh):
+    now = time.time()
     with STATE_LOCK:
+        STATE["timestamp"] = now
+        STATE["victron_reading_ts"] = now
         STATE["solar_input_w"] = solar_w
         STATE["load_w"] = load_w
         STATE["yield_today_wh"] = yield_today_wh
         STATE["charge_state"] = str(charge_state) if charge_state is not None else None
         STATE["ble_connected_victron"] = True
         STATE["last_error_victron"] = ""
-        # Refresh timestamp if JBD hasn't updated recently
-        if STATE["timestamp"] is None:
-            STATE["timestamp"] = time.time()
 
 
 async def victron_loop():
@@ -454,7 +546,9 @@ class Handler(BaseHTTPRequestHandler):
                 s = dict(STATE)
             now = time.time()
             reading_ts = s.get("timestamp")
-            ble_connected = bool(s.get("ble_connected_jbd") and s.get("ble_connected_victron"))
+            jbd_reading_ts = s.get("jbd_reading_ts")
+            victron_reading_ts = s.get("victron_reading_ts")
+            ble_connected = bool(s.get("ble_connected_victron"))
             load_w = s.get("load_w")
             solar_w = s.get("solar_input_w")
 
@@ -469,7 +563,7 @@ class Handler(BaseHTTPRequestHandler):
                 "battery_total_input_w": solar_w,
                 "battery_voltage_mv": s.get("voltage_mv"),
                 "battery_temp_c": s.get("temp_c"),
-                "battery_reading_ts": reading_ts,
+                "battery_reading_ts": jbd_reading_ts,
                 "battery_charging_status": s.get("charge_state"),
                 "battery_capacity_wh": round((s.get("nominal_ah") or NOMINAL_AH) * ((s.get("voltage_mv") or 12800) / 1000.0), 1),
                 "battery_remaining_ah": s.get("remaining_ah"),
@@ -482,12 +576,13 @@ class Handler(BaseHTTPRequestHandler):
                 "solix_total_input_w": solar_w,
                 "solix_voltage_mv": s.get("voltage_mv"),
                 "solix_temp_c": s.get("temp_c"),
-                "solix_reading_ts": reading_ts,
+                "solix_reading_ts": jbd_reading_ts,
                 "solix_charging_status": s.get("charge_state"),
                 # status
                 "source": "lfp-ble",
                 "ble_connected_jbd": s.get("ble_connected_jbd"),
                 "ble_connected_victron": s.get("ble_connected_victron"),
+                "victron_reading_ts": victron_reading_ts,
                 "last_error_jbd": s.get("last_error_jbd"),
                 "last_error_victron": s.get("last_error_victron"),
                 "hours_remaining": s.get("hours_remaining"),
