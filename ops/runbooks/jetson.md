@@ -46,12 +46,24 @@ sudo ./ops/bootstrap/bootstrap_fresh_box.sh \
 
 ## Current Jetson Solar LFP State
 
-- Battery monitor service: `lfp-monitor`
+- Battery monitor service: `lfp-monitor` (port 18082)
 - Power path:
   - Victron SmartSolar BLE advertisements provide live `value` / load watts and solar input
   - JBD BMS BLE provides battery-side fields: SOC, Ah, voltage, current
 - JBD is polled one-shot every `60s` and disconnected immediately after read so the phone app can still use the BMS
-- Telemetry stale detection must follow Victron/power-feed freshness, not JBD freshness
+- Telemetry stale detection follows `victron_reading_ts`, not `battery_reading_ts` (JBD freshness)
+- Single shared `BleakScanner` feeds both Victron and JBD queues; scanner is stopped during JBD GATT sessions to prevent BlueZ notification failures
+
+### JBD BLE Recovery
+
+If `journalctl -u lfp-monitor` shows repeated `TimeoutError` on JBD queries:
+
+```bash
+sudo systemctl stop lfp-monitor
+sudo systemctl restart bluetooth
+sleep 5
+sudo systemctl start lfp-monitor
+```
 
 ## Verify
 

@@ -90,21 +90,64 @@ VICTRON_ENCRYPTION_KEY=<hex key from VictronConnect → Product info → Encrypt
 | `SOLIX_RECONNECT_DELAY` | `10` |
 | `BATTERY_JBD_POLL_INTERVAL` | `60` |
 
+## BLE Architecture
+
+`lfp_monitor.py` runs a **single shared `BleakScanner`** that dispatches advertisements
+to per-device asyncio queues via a detection callback:
+
+- Victron advertisements → `victron_queue` → processed inline (no connection)
+- JBD advertisements → `jbd_queue` → connect + query + disconnect under `asyncio.Lock`
+
+**Why one scanner, not two:** running two concurrent `BleakScanner` instances on the
+same adapter causes BlueZ conflicts and missed packets. This is the pattern documented
+in bleak's own `two_devices.py` example.
+
+**Why stop the scanner during JBD GATT sessions:** BlueZ does not reliably deliver
+GATT notifications when a scanner is running concurrently on the same adapter.
+`lfp_monitor.py` calls `scanner.stop()` before connecting to JBD and `scanner.start()`
+(in a `finally` block) after disconnecting. The scanner gap is ~3-5s per 60s cycle,
+well under `VICTRON_ADV_TIMEOUT=30s`, so no false timeout warnings occur.
+
+**Single event loop:** bleak requires a single asyncio event loop for the process
+lifetime. `ble_thread()` creates one loop and reuses it across `ble_main()` restarts.
+
+## BLE Recovery
+
+If JBD disappears or GATT notifications stop coming (service reports TimeoutError
+repeatedly), the BMS likely needs a Bluetooth stack reset:
+
+```bash
+sudo systemctl stop lfp-monitor
+sudo systemctl restart bluetooth
+sleep 5
+sudo systemctl start lfp-monitor
+```
+
+This is a BMS hardware/BlueZ state issue, not a code bug. The JBD BMS can enter a
+stuck state after rapid service restarts or after being held in a connection too long.
+
 ## Notes
 
 - Victron data arrives via passive BLE advertisement scanning — no connection required.
-- JBD BMS is polled with a one-shot GATT request (`0x03`), then disconnected to avoid holding the BMS open and blocking the phone app.
-- JBD polling interval is `BATTERY_JBD_POLL_INTERVAL`; the Jetson LFP profile currently sets it to `60` seconds.
-- Feed-health semantics matter:
-  - `ble_connected` on `/sensor/power` now means Victron/power-feed health, not "JBD is connected right this instant"
+- JBD BMS is polled with a one-shot GATT request (`0x03`), then disconnected to avoid
+  holding the BMS open and blocking the phone app.
+- JBD polling interval is `BATTERY_JBD_POLL_INTERVAL`; the Jetson LFP profile sets it
+  to `60` seconds.
+- Feed-health semantics:
+  - `ble_connected` on `/sensor/power` reflects Victron/power-feed health, not "JBD
+    is connected right this instant"
+  - `ble_connected_jbd=true` after a successful poll means "last read succeeded" — the
+    BMS is not currently connected (one-shot model). Use `jbd_reading_ts` age for staleness.
   - `battery_reading_ts` is JBD freshness only
   - `victron_reading_ts` is the live power-feed freshness clock
-- `power_telemetry.py` must use Victron/power-feed freshness for stale detection and `power_reading_ts`.
-  Using JBD `battery_reading_ts` for whole-feed staleness is wrong and causes the website to fall back to `jtop` between delayed JBD polls even while Victron watts are still live.
+- `power_telemetry.py` uses `victron_reading_ts` for whole-feed stale detection and
+  `power_reading_ts`. **Never use `battery_reading_ts` for whole-feed staleness** — JBD
+  may be 60s stale while Victron watts are perfectly live, causing false jtop fallback.
+- JBD "device not seen in scan" retries at `JBD_POLL_INTERVAL` (60s), not
+  `RECONNECT_DELAY` (10s). This prevents flaky JBD from starving Victron scan time.
 - The combined telemetry CSV is written as `battery-YYYY-MM-DD.csv`.
-- Every successful JBD read also appends a raw packet log to `jbd-basic-YYYY-MM-DD.csv` with:
-  - full raw packet hex
-  - decoded core values
-  - every payload byte in `b00...`
-- The raw JBD CSV is the best local forensic record short of a live `btmon` capture.
-- `SOLIX_LOG_DIR` in `power_telemetry.py` must point to the lfp-monitor logs dir when using this monitor, and `BATTERY_CSV_PREFIX` should be set to `battery-` so the history reader finds the right files.
+- Every successful JBD read appends a raw packet log to `jbd-basic-YYYY-MM-DD.csv`:
+  - full raw packet hex, decoded core values, every payload byte in `b00...` columns
+  - this is the best local forensic record short of a live `btmon` capture
+- `SOLIX_LOG_DIR` in `power_telemetry.py` must point to the lfp-monitor logs dir, and
+  `BATTERY_CSV_PREFIX` should be `battery` so the history reader finds the right files.
