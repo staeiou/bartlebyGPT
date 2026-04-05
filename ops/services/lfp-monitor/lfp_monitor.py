@@ -206,17 +206,21 @@ def restore_last_jbd_state_from_logs():
     pattern = str(CSV_DIR / "jbd-basic-*.csv")
     latest_row = None
     latest_ts = None
-    for path in sorted(glob.glob(pattern)):
+    # Scan most-recent files first (reverse date order) and stop as soon as
+    # we find a valid row — avoids reading years of history on long-running deployments.
+    for path in sorted(glob.glob(pattern), reverse=True):
         try:
             with open(path, "r", encoding="utf-8", newline="") as handle:
-                reader = csv.DictReader((line.replace("\x00", "") for line in handle))
-                for row in reader:
-                    reading_ts = _safe_csv_float(row.get("reading_ts"))
-                    if reading_ts is None:
-                        continue
-                    if latest_ts is None or reading_ts > latest_ts:
-                        latest_ts = reading_ts
-                        latest_row = row
+                rows = list(csv.DictReader((line.replace("\x00", "") for line in handle)))
+            for row in reversed(rows):  # newest rows are at the end of each file
+                reading_ts = _safe_csv_float(row.get("reading_ts"))
+                if reading_ts is None:
+                    continue
+                if latest_ts is None or reading_ts > latest_ts:
+                    latest_ts = reading_ts
+                    latest_row = row
+            if latest_row is not None:
+                break  # found a valid row in this file; no need to look further back
         except OSError as err:
             log.warning("JBD startup restore read failed for %s: %s", path, err)
 
@@ -297,90 +301,50 @@ async def jbd_query_once(client: BleakClient, cmd: int, timeout: float = 8.0) ->
     """Send a JBD request and collect the full response packet."""
     buf = bytearray()
     done = asyncio.Event()
+    request = jbd_request(cmd)
 
     def on_notify(handle, data):
+        log.info("JBD: notify handle=%s len=%s data=%s", handle, len(data), data.hex())
         buf.extend(data)
         raw = bytes(buf)
-        if len(raw) >= 4 and raw[0] == 0xDD and raw[2] == 0x00:
-            expected = 4 + raw[3] + 3
-            if len(raw) >= expected:
+        if len(raw) >= 4 and raw[0] == 0xDD:
+            if raw[2] != 0x00:
+                # BMS returned an error frame — signal done immediately so we
+                # don't block for the full timeout; parse_jbd_basic will reject it.
+                log.warning("JBD: error frame status=0x%02x data=%s", raw[2], raw.hex())
+                done.set()
+            elif len(raw) >= 4 + raw[3] + 3:
                 done.set()
 
+    log.info("JBD: start_notify char=%s", JBD_CHAR_N)
     await client.start_notify(JBD_CHAR_N, on_notify)
     try:
-        await client.write_gatt_char(JBD_CHAR_W, jbd_request(cmd), response=False)
+        log.info("JBD: write_gatt_char char=%s req=%s response=%s", JBD_CHAR_W, request.hex(), False)
+        await client.write_gatt_char(JBD_CHAR_W, request, response=False)
+        log.info("JBD: wait_for response timeout=%ss", timeout)
         await asyncio.wait_for(done.wait(), timeout=timeout)
+        log.info("JBD: response event completed")
     finally:
         try:
+            log.info("JBD: stop_notify char=%s", JBD_CHAR_N)
             await client.stop_notify(JBD_CHAR_N)
         except Exception:
             pass
 
     raw = bytes(buf)
+    log.info("JBD: raw assembled len=%s data=%s", len(raw), raw.hex())
     if len(raw) >= 4 and raw[0] == 0xDD and raw[2] == 0x00:
         return raw[:4 + raw[3] + 3]
     return raw
 
 
-# Set when JBD needs the BLE adapter (connecting/reconnecting).
-# victron_loop watches this and stops its scanner to yield the adapter.
-_JBD_NEEDS_ADAPTER: asyncio.Event | None = None
-
-
-def _jbd_adapter_event() -> asyncio.Event:
-    global _JBD_NEEDS_ADAPTER
-    if _JBD_NEEDS_ADAPTER is None:
-        _JBD_NEEDS_ADAPTER = asyncio.Event()
-    return _JBD_NEEDS_ADAPTER
-
-
-async def jbd_loop():
-    """Polling JBD BMS loop — connect, query once, disconnect, then sleep."""
-    ev = _jbd_adapter_event()
-    while True:
-        try:
-            log.info("JBD: scanning for %s ...", JBD_ADDR)
-            ev.set()  # ask Victron scanner to pause
-            await asyncio.sleep(2.0)  # give Victron time to exit its scanner context
-            dev = await BleakScanner.find_device_by_address(JBD_ADDR, timeout=SCAN_TIMEOUT)
-            if dev is None:
-                log.warning("JBD: device not found, retrying in %ss", RECONNECT_DELAY)
-                with STATE_LOCK:
-                    STATE["ble_connected_jbd"] = False
-                    STATE["last_error_jbd"] = "device not found"
-                ev.clear()
-                await asyncio.sleep(RECONNECT_DELAY)
-                continue
-            log.info("JBD: connecting...")
-            async with BleakClient(dev, timeout=15.0) as client:
-                ev.clear()  # connected — Victron may resume scanning
-                log.info("JBD: connected")
-                try:
-                    raw = await jbd_query_once(client, 0x03)
-                    parsed = parse_jbd_basic(raw)
-                    if parsed:
-                        update_state_jbd(parsed, raw)
-                    else:
-                        log.warning("JBD: bad response: %s", raw.hex())
-                except Exception as err:
-                    log.warning("JBD: query error: %s", err)
-                    with STATE_LOCK:
-                        STATE["last_error_jbd"] = str(err)
-
-            log.info("JBD: disconnected")
-
-        except Exception as exc:
-            log.warning("JBD: error: %s — retrying in %ss", exc, RECONNECT_DELAY)
-            with STATE_LOCK:
-                STATE["ble_connected_jbd"] = False
-                STATE["last_error_jbd"] = str(exc)
-
-        ev.clear()
-        await asyncio.sleep(JBD_POLL_INTERVAL)
-
-
 # ---------------------------------------------------------------------------
-# Victron SmartSolar (passive BLE advertisement scanning)
+# Shared BLE scanner + per-device dispatch queues
+#
+# One persistent BleakScanner feeds both devices via a detection callback.
+# JBD uses an asyncio.Lock (bleak's recommended pattern for scan+connect
+# serialisation) rather than a custom event + sleep-based timing hack.
+# Victron is advertisement-only (no connection) so it never needs the lock.
 # ---------------------------------------------------------------------------
 
 def update_state_victron(solar_w, load_w, battery_voltage_v, charge_state, yield_today_wh):
@@ -396,8 +360,71 @@ def update_state_victron(solar_w, load_w, battery_voltage_v, charge_state, yield
         STATE["last_error_victron"] = ""
 
 
-async def victron_loop():
-    """Passive Victron advertisement scanner — no connection needed."""
+async def jbd_loop(connect_lock: asyncio.Lock, jbd_queue: asyncio.Queue):
+    """Polling JBD BMS loop — wait for advertisement, connect under lock, query once, disconnect, sleep."""
+    jbd_addr = JBD_ADDR.upper()
+    while True:
+        # Drain stale entries left over from the previous poll cycle.
+        while not jbd_queue.empty():
+            jbd_queue.get_nowait()
+
+        # Wait for the shared scanner to see the JBD device.
+        log.info("JBD: waiting for advertisement from %s (timeout=%ss) ...", jbd_addr, SCAN_TIMEOUT)
+        try:
+            dev = await asyncio.wait_for(jbd_queue.get(), timeout=SCAN_TIMEOUT)
+        except asyncio.TimeoutError:
+            log.warning("JBD: device not seen in scan, retrying in %ss", JBD_POLL_INTERVAL)
+            with STATE_LOCK:
+                STATE["ble_connected_jbd"] = False
+                STATE["last_error_jbd"] = "device not seen in scan"
+            await asyncio.sleep(JBD_POLL_INTERVAL)
+            continue
+
+        # Serialise the connect phase with the lock so two concurrent coroutines
+        # never race on the adapter (matches bleak two_devices.py pattern).
+        try:
+            async with connect_lock:
+                log.info("JBD: connecting...")
+                async with BleakClient(dev, timeout=15.0) as client:
+                    log.info("JBD: connected")
+                    # Lock released here — adapter free for passive Victron scanning
+                    # while the GATT session is open.
+
+                    try:
+                        raw = await jbd_query_once(client, 0x03)
+                        parsed = parse_jbd_basic(raw)
+                        if parsed:
+                            update_state_jbd(parsed, raw)
+                        else:
+                            log.warning("JBD: bad response len=%s data=%s", len(raw), raw.hex())
+                            with STATE_LOCK:
+                                STATE["last_error_jbd"] = (
+                                    f"bad response (len={len(raw)} status=0x{raw[2]:02x})"
+                                    if len(raw) >= 3
+                                    else f"bad response (len={len(raw)})"
+                                )
+                                STATE["ble_connected_jbd"] = False
+                    except Exception as err:
+                        log.warning("JBD: query error type=%s repr=%r str=%s", type(err).__name__, err, err)
+                        with STATE_LOCK:
+                            STATE["last_error_jbd"] = str(err)
+                            STATE["ble_connected_jbd"] = False
+
+            log.info("JBD: disconnected")
+
+        except Exception as exc:
+            log.warning("JBD: connection error: %s — retrying in %ss", exc, RECONNECT_DELAY)
+            with STATE_LOCK:
+                STATE["ble_connected_jbd"] = False
+                STATE["last_error_jbd"] = str(exc)
+            # Short delay for transient connection errors before the next poll sleep.
+            await asyncio.sleep(RECONNECT_DELAY)
+
+        await asyncio.sleep(JBD_POLL_INTERVAL)
+
+
+async def victron_loop(victron_queue: asyncio.Queue):
+    """Consume Victron SmartSolar advertisements from the shared scanner queue."""
     if SolarCharger is None:
         log.warning("victron-ble not available (%s); Victron data will be absent", VICTRON_IMPORT_ERROR)
         return
@@ -405,84 +432,85 @@ async def victron_loop():
         log.warning("VICTRON_ENCRYPTION_KEY not set; Victron data will be absent")
         return
 
-    addr = VICTRON_ADDR.upper()
-    log.info("Victron: scanning advertisements from %s", addr)
-    ev = _jbd_adapter_event()
+    log.info("Victron: consuming advertisements from %s", VICTRON_ADDR.upper())
+    last_seen = time.monotonic()
 
     while True:
-        # Yield adapter to JBD if it needs to connect
-        while ev.is_set():
-            await asyncio.sleep(0.5)
+        try:
+            mfr_data = await asyncio.wait_for(victron_queue.get(), timeout=2.0)
+        except asyncio.TimeoutError:
+            elapsed = time.monotonic() - last_seen
+            if elapsed >= VICTRON_ADV_TIMEOUT:
+                log.warning("Victron: no advertisement for %.0fs", elapsed)
+                with STATE_LOCK:
+                    STATE["ble_connected_victron"] = False
+                    STATE["last_error_victron"] = "advertisement timeout"
+            continue
 
         last_seen = time.monotonic()
-        try:
-            queue: asyncio.Queue = asyncio.Queue()
+        for _mfr_id, data in mfr_data.items():
+            try:
+                result = SolarCharger(VICTRON_KEY).parse(data)
+                solar_w = result.get_solar_power()
+                load_a = result.get_external_device_load()
+                batt_v = result.get_battery_voltage()
+                load_w = round(load_a * batt_v, 1) if (load_a is not None and batt_v is not None) else None
+                charge_state = result.get_charge_state()
+                yield_today = result.get_yield_today()
+                update_state_victron(
+                    solar_w=solar_w,
+                    load_w=load_w,
+                    battery_voltage_v=batt_v,
+                    charge_state=charge_state,
+                    yield_today_wh=yield_today,
+                )
+            except Exception as err:
+                log.warning("Victron: parse error: %s", err)
+                with STATE_LOCK:
+                    STATE["last_error_victron"] = str(err)
 
-            def cb(device, adv):
-                if device.address.upper() != addr:
-                    return
-                queue.put_nowait(adv.manufacturer_data)
 
-            async with BleakScanner(cb):
-                while True:
-                    # Poll the queue with a short timeout so we can check for JBD need
-                    if ev.is_set():
-                        log.info("Victron: pausing scanner for JBD connection")
-                        break  # exit scanner context — JBD will connect, then we restart
+async def ble_main():
+    """Single persistent BleakScanner feeds per-device queues. One event loop, no restarts."""
+    jbd_addr = JBD_ADDR.upper()
+    victron_addr = VICTRON_ADDR.upper()
 
-                    try:
-                        mfr_data = await asyncio.wait_for(queue.get(), timeout=2.0)
-                    except asyncio.TimeoutError:
-                        elapsed = time.monotonic() - last_seen
-                        if elapsed >= VICTRON_ADV_TIMEOUT:
-                            log.warning("Victron: no advertisement for %ss", elapsed)
-                            with STATE_LOCK:
-                                STATE["ble_connected_victron"] = False
-                                STATE["last_error_victron"] = "advertisement timeout"
-                        continue
+    jbd_queue: asyncio.Queue = asyncio.Queue()
+    victron_queue: asyncio.Queue = asyncio.Queue()
+    connect_lock = asyncio.Lock()
 
-                    last_seen = time.monotonic()
-                    for mfr_id, data in mfr_data.items():
-                        try:
-                            result = SolarCharger(VICTRON_KEY).parse(data)
-                            solar_w = result.get_solar_power()
-                            load_a = result.get_external_device_load()
-                            batt_v = result.get_battery_voltage()
-                            load_w = round(load_a * batt_v, 1) if (load_a is not None and batt_v is not None) else None
-                            charge_state = result.get_charge_state()
-                            yield_today = result.get_yield_today()
-                            update_state_victron(
-                                solar_w=solar_w,
-                                load_w=load_w,
-                                battery_voltage_v=batt_v,
-                                charge_state=charge_state,
-                                yield_today_wh=yield_today,
-                            )
-                        except Exception as err:
-                            log.warning("Victron: parse error: %s", err)
-                            with STATE_LOCK:
-                                STATE["last_error_victron"] = str(err)
+    def on_detection(device, adv):
+        addr = device.address.upper()
+        if addr == jbd_addr:
+            jbd_queue.put_nowait(device)
+        elif addr == victron_addr:
+            victron_queue.put_nowait(adv.manufacturer_data)
 
-        except Exception as exc:
-            log.warning("Victron: scanner error: %s — retrying in %ss", exc, RECONNECT_DELAY)
-            with STATE_LOCK:
-                STATE["ble_connected_victron"] = False
-                STATE["last_error_victron"] = str(exc)
-            await asyncio.sleep(RECONNECT_DELAY)
+    log.info("BLE: starting shared scanner (JBD=%s Victron=%s)", jbd_addr, victron_addr)
+    try:
+        async with BleakScanner(on_detection):
+            await asyncio.gather(
+                jbd_loop(connect_lock, jbd_queue),
+                victron_loop(victron_queue),
+            )
+    except Exception as exc:
+        log.error("BLE: shared scanner fatal error: %s", exc)
+        raise
 
 
 # ---------------------------------------------------------------------------
-# BLE thread (runs both loops concurrently)
+# BLE thread
 # ---------------------------------------------------------------------------
 
 def ble_thread():
+    # Single event loop for the lifetime of the process — bleak requires this.
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     while True:
         try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(asyncio.gather(jbd_loop(), victron_loop()))
+            loop.run_until_complete(ble_main())
         except Exception as exc:
-            log.error("BLE event loop crashed: %s — restarting in %ss", exc, RECONNECT_DELAY)
+            log.error("BLE: ble_main exited unexpectedly: %s — restarting in %ss", exc, RECONNECT_DELAY)
             with STATE_LOCK:
                 STATE["ble_connected_jbd"] = False
                 STATE["ble_connected_victron"] = False
@@ -602,6 +630,7 @@ def main():
         "lfp-monitor starting: jbd=%s victron=%s http=%s:%s csv=%s capacity=%.0fWh",
         JBD_ADDR, VICTRON_ADDR, HOST, PORT, CSV_DIR, CAPACITY_WH,
     )
+    restore_last_jbd_state_from_logs()
     if not VICTRON_KEY:
         log.warning("VICTRON_ENCRYPTION_KEY not set — solar/load data will be absent")
     threading.Thread(target=ble_thread, daemon=True, name="ble").start()

@@ -409,21 +409,24 @@ def maybe_recover_battery_feed(reason, age_seconds=None):
         mode_label = f"restart {monitor_unit}"
 
     logging.warning("Battery feed recovery attempt #%d: %s (reason=%s)", attempt_count, mode_label, reason)
-    try:
-        for unit in restart_units:
-            subprocess.run(
-                ["systemctl", "restart", unit],
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=20,
-            )
-        logging.warning("Battery feed recovery succeeded: %s", mode_label)
-        return f"auto-recovery attempted ({mode_label})"
-    except (OSError, subprocess.SubprocessError) as err:
-        age_label = "n/a" if age_seconds is None else f"{age_seconds:.1f}s"
-        logging.warning("Battery feed auto-recovery failed (age=%s, mode=%s): %s", age_label, mode_label, err)
-        return f"auto-recovery failed ({mode_label}): {err}"
+
+    def _do_recovery(units, label, age_s):
+        try:
+            for unit in units:
+                subprocess.run(
+                    ["systemctl", "restart", unit],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
+                )
+            logging.warning("Battery feed recovery succeeded: %s", label)
+        except (OSError, subprocess.SubprocessError) as err:
+            age_label = "n/a" if age_s is None else f"{age_s:.1f}s"
+            logging.warning("Battery feed auto-recovery failed (age=%s, mode=%s): %s", age_label, label, err)
+
+    threading.Thread(target=_do_recovery, args=(restart_units, mode_label, age_seconds), daemon=True).start()
+    return f"auto-recovery dispatched ({mode_label})"
 
 
 def read_rpi_power_watts():
@@ -821,7 +824,7 @@ def read_power_watts():
                 if isinstance(err, EsphomeFeedError):
                     sticky_extra.update(err.extra)
                 err_text = str(err)
-                if "esphome solix reading stale by" not in err_text:
+                if "esphome power feed reading stale by" not in err_text:
                     recovery_note = maybe_recover_battery_feed(reason=f"esphome read failure: {err_text}")
                     error_detail = f"{error_detail} ({recovery_note})"
             errors.append(error_detail)
@@ -984,8 +987,9 @@ def sample_once():
 
 def sampler_loop():
     while True:
+        next_wake = time.time() + SAMPLE_INTERVAL
         sample_once()
-        time.sleep(SAMPLE_INTERVAL)
+        time.sleep(max(0.0, next_wake - time.time()))
 
 
 class Handler(BaseHTTPRequestHandler):
