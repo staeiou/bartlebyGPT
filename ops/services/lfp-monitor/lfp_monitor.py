@@ -534,15 +534,24 @@ async def ble_main():
     scanner = BleakScanner(on_detection)
     log.info("BLE: starting shared scanner (JBD=%s Victron=%s)", jbd_addr, victron_addr)
     await scanner.start()
+
+    # Use create_task so we hold references and can cancel them explicitly.
+    # asyncio.gather in Python 3.10 does NOT cancel sibling tasks when one
+    # raises — they continue as orphaned background tasks on the event loop.
+    # With create_task + explicit cancel in finally, every ble_main exit
+    # (normal, exception, or BT reset) is guaranteed to clean up both tasks.
+    jbd_task = asyncio.create_task(jbd_loop(connect_lock, jbd_queue, scanner), name="jbd")
+    vic_task = asyncio.create_task(victron_loop(victron_queue), name="victron")
     try:
-        await asyncio.gather(
-            jbd_loop(connect_lock, jbd_queue, scanner),
-            victron_loop(victron_queue),
-        )
-    except Exception as exc:
-        log.error("BLE: ble_main gather error: %s", exc)
+        await asyncio.gather(jbd_task, vic_task)
+    except BaseException as exc:
+        log.error("BLE: task exited (%s: %s)", type(exc).__name__, exc)
         raise
     finally:
+        for t in (jbd_task, vic_task):
+            if not t.done():
+                t.cancel()
+        await asyncio.gather(jbd_task, vic_task, return_exceptions=True)
         await scanner.stop()
 
 
