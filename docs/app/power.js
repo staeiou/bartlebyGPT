@@ -1,5 +1,5 @@
-import { POWER_PROFILES, defaults } from "./config.js?v=20260320a1";
-import { getEffectiveBaseUrl } from "./settings.js?v=20260320a1";
+import { POWER_PROFILES, defaults } from "./config.js?v=20260409a1";
+import { getEffectiveBaseUrl } from "./settings.js?v=20260409a1";
 
 export function createPowerController({ elements, state, getSettings }) {
   let viewportMetricsRaf = 0;
@@ -826,6 +826,40 @@ ${charts}
     return `${Math.round(watts)} Watts`;
   }
 
+  function renderPendingPowerDisplay() {
+    const settings = getSettings();
+    const resolution = resolvePowerProfile(settings, state.powerTelemetry);
+    const cachedSoc = readCachedSolixSoc();
+    const hasCachedSoc = Number.isFinite(cachedSoc);
+
+    elements.powerWatts.textContent = "-- Watts";
+    elements.wattsLiveDot.hidden = true;
+
+    if (isBatteryProfile(resolution)) {
+      document.documentElement.style.setProperty("--solix-battery-fill", hasCachedSoc ? `${cachedSoc}%` : "100%");
+      elements.batteryBadge.hidden = !hasCachedSoc;
+      elements.batteryBadgePct.textContent = hasCachedSoc ? `${Math.round(cachedSoc)}%` : "";
+      if (hasCachedSoc) {
+        const fillH = (cachedSoc / 100) * 46;
+        elements.batteryBadgeFill.setAttribute("y", (53 - fillH).toFixed(1));
+        elements.batteryBadgeFill.setAttribute("height", fillH.toFixed(1));
+      }
+      elements.powerCo2.textContent = window.innerWidth < 540 ? "Solar in: ?W" : "Solar in: ?W (connecting)";
+      elements.powerCost.textContent = hasCachedSoc ? `${Math.round(cachedSoc)}% battery` : "Battery status pending";
+    } else {
+      document.documentElement.style.setProperty("--solix-battery-fill", "0%");
+      elements.batteryBadge.hidden = true;
+      elements.powerCo2.textContent = "-- gCO2/hr";
+      elements.powerCost.textContent = "--/hr";
+    }
+
+    const activeCountText = formatActiveCountText(0);
+    elements.powerActiveCount.textContent = activeCountText;
+    elements.activeCountHeader.textContent = activeCountText;
+    elements.powerDisplay.classList.remove("is-active");
+    updatePowerModalBody(resolution, state.powerTelemetry, null);
+  }
+
   function renderFallbackPowerDisplay(active) {
     const settings = getSettings();
     const resolution = resolvePowerProfile(settings, state.powerTelemetry);
@@ -1013,6 +1047,10 @@ ${charts}
   function updatePowerDisplay(active) {
     if (state.powerTelemetryAvailable && state.powerTelemetry) {
       renderTelemetryPowerDisplay(state.powerTelemetry);
+      return;
+    }
+    if (!state.powerTelemetry && state.powerTelemetryInFlight) {
+      renderPendingPowerDisplay();
       return;
     }
     renderFallbackPowerDisplay(active);
