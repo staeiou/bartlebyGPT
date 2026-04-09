@@ -4,3 +4,4 @@ ops/config/modules-load.d/
 *secrets*.env
 __pycache__/
 .ipynb_checkpoints/
+node_modules/

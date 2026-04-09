@@ -1,11 +1,11 @@
-import { createAnalytics } from "./analytics.js?v=20260409a1";
-import { createChatApi } from "./chat-api.js?v=20260409a1";
-import { createChatUi } from "./chat-ui.js?v=20260409a1";
-import { getElements } from "./dom.js?v=20260409a1";
-import { createPowerController } from "./power.js?v=20260409a1";
-import { createSettingsController } from "./settings.js?v=20260409a1";
-import { createState } from "./state.js?v=20260409a1";
-import { createWelcomeController } from "./welcome.js?v=20260409a1";
+import { createAnalytics } from "./analytics.js";
+import { createChatApi } from "./chat-api.js";
+import { createChatUi } from "./chat-ui.js";
+import { getElements } from "./dom.js";
+import { createPowerController } from "./power.js";
+import { createSettingsController } from "./settings.js";
+import { createState } from "./state.js";
+import { createWelcomeController } from "./welcome.js";
 
 const elements = getElements();
 const state = createState();
@@ -201,15 +201,17 @@ elements.powerModalBackdrop.addEventListener("click", (event) => {
 
 state.turnCount = analytics.loadTurnCount();
 settings.applySettings(settings.loadSettings());
+welcome.renderWelcome();
+welcome.initCardRotation();
+chatUi.updateInputCount();
 document.documentElement.style.setProperty("--color-warmth", elements.colorWarmth.value);
 power.scheduleViewportMetricsUpdate();
-power.syncPowerProfileUi();
-chatUi.updateInputCount();
 power.updateMobileHallucination();
-power.initIdleDetection();
-power.startPowerTelemetryPolling();
-power.startPowerHistoryPolling();
-power.updatePowerDisplay(false);
-analytics.goatStart();
-welcome.initCardRotation();
-welcome.renderWelcome();
+
+window.requestAnimationFrame(() => {
+  power.syncPowerProfileUi();
+  power.initIdleDetection();
+  power.startPowerTelemetryPolling();
+  power.updatePowerDisplay(false);
+  analytics.goatStart();
+});

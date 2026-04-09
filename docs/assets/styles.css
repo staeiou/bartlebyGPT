@@ -20,6 +20,7 @@
   --keyboard-offset: 0px;
   --solix-battery-fill: 100%;
   --color-warmth: 0;
+  --battery-badge-inline-size: 60px;
 }
 
 * {
@@ -553,6 +554,8 @@ body:has(.messages:not(.is-welcome)) .battery-badge svg {
   text-transform: none;
   color: rgba(28, 28, 26, 0.55);
   opacity: 1;
+  padding-right: calc(var(--battery-badge-inline-size) + 8px);
+  justify-self: end;
 }
 
 .topbar-note a {
@@ -647,6 +650,7 @@ body:has(.messages:not(.is-welcome)) .battery-badge svg {
   box-shadow: 0 16px 40px rgba(22, 18, 10, 0.06);
   transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, opacity 400ms ease;
 }
+
 
 .suggestion-card.dissolving {
   opacity: 0;
@@ -1209,7 +1213,7 @@ details.connection-settings > summary {
     grid-row: 1;
     align-self: start;
     text-align: right;
-    padding-right: 5px;
+    padding-right: calc(var(--battery-badge-inline-size) + 8px);
   }
 
   #power-display {

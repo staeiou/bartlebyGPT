@@ -1,5 +1,5 @@
-import { POWER_PROFILES, defaults } from "./config.js?v=20260409a1";
-import { getEffectiveBaseUrl } from "./settings.js?v=20260409a1";
+import { POWER_PROFILES, defaults } from "./config.js";
+import { getEffectiveBaseUrl } from "./settings.js";
 
 export function createPowerController({ elements, state, getSettings }) {
   let viewportMetricsRaf = 0;
@@ -1159,16 +1159,18 @@ ${charts}
   }
 
   function startPowerHistoryPolling() {
-    if (state.powerHistoryTimer) {
-      window.clearInterval(state.powerHistoryTimer);
-    }
-
-    void refreshPowerHistory();
+    if (state.powerHistoryTimer) return;
     state.powerHistoryTimer = window.setInterval(() => {
-      if (!state.idle || elements.powerModalBackdrop.classList.contains("is-open")) {
+      if (elements.powerModalBackdrop.classList.contains("is-open")) {
         void refreshPowerHistory();
       }
     }, POWER_HISTORY_REFRESH_MS);
+  }
+
+  function stopPowerHistoryPolling() {
+    if (!state.powerHistoryTimer) return;
+    window.clearInterval(state.powerHistoryTimer);
+    state.powerHistoryTimer = null;
   }
 
   function initIdleDetection() {
@@ -1289,6 +1291,7 @@ ${charts}
 
   function openPowerModal() {
     elements.powerModalBackdrop.classList.add("is-open");
+    startPowerHistoryPolling();
     void refreshPowerHistory();
     updatePowerDisplay(state.busy);
     scheduleHistoryChartResize();
@@ -1301,6 +1304,7 @@ ${charts}
 
   function closePowerModal() {
     elements.powerModalBackdrop.classList.remove("is-open");
+    stopPowerHistoryPolling();
     disposeHistoryCharts();
   }
 
@@ -1313,6 +1317,7 @@ ${charts}
     refreshPowerHistory,
     startPowerTelemetryPolling,
     startPowerHistoryPolling,
+    stopPowerHistoryPolling,
     initIdleDetection,
     updateMobileHallucination,
     scheduleViewportMetricsUpdate,

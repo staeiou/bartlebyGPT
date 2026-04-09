@@ -367,9 +367,8 @@ write_nginx_config() {
 
     location ~* \\.(js|mjs|css)$ {
         root ${WEB_APP_PUBLIC_DIR};
-        add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
-        add_header Pragma "no-cache" always;
-        expires -1;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        expires 1y;
         try_files \$uri =404;
     }
 
@@ -443,6 +442,22 @@ server {
     listen ${PUBLIC_PORT};
     server_name _;
     server_tokens off;
+
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_min_length 512;
+    gzip_types
+        text/plain
+        text/css
+        text/javascript
+        application/javascript
+        application/json
+        application/xml
+        text/xml
+        application/xml+rss
+        image/svg+xml
+        application/manifest+json;
 
     client_max_body_size ${NGINX_CLIENT_MAX_BODY_SIZE};
     limit_req_status 429;

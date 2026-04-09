@@ -4,7 +4,7 @@ import {
   SETTINGS_KEY,
   POWER_PROFILES,
   defaults,
-} from "./config.js?v=20260409a1";
+} from "./config.js";
 
 export function coercePositiveInt(value, fallback) {
   const parsed = Number.parseInt(String(value), 10);

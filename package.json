@@ -1,0 +1,10 @@
+{
+  "name": "bartlebygpt-web",
+  "private": true,
+  "scripts": {
+    "build:web": "node ./ops/scripts/build_web_app.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.3"
+  }
+}

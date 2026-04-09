@@ -148,7 +148,7 @@ export const STARTER_POOL = [
     kicker: "Expose",
     title: "Surface the Racial Logic",
     description: "Hand over a law, policy, institution, or discourse and get back a CRT analysis: how race is constructed and operationalized, what colorblind frameworks obscure, whose interests racial arrangements serve, and what counternarratives reveal.",
-    prompt: "Surface the racial logic of [law / institution], identifying how race is constructed and operationalized within it, what colorblind or post-racial frameworks obscure, how intersecting structures of class, gender, and citizenship compound its effects, and what counternarratives and lived experience reveal about its operations: [paste text, description, or context here]",
+    prompt: "Analyze [law / institution] through critical race theory, showing how race is made consequential through seemingly neutral rules, what liberal ideals obscure about its operation, how burdens and protections are unevenly distributed, and what history, enforcement, and counterstories reveal about its logic: [paste text or context here]",
   },
   {
     kicker: "Read",
@@ -180,30 +180,30 @@ export const STARTER_POOL = [
     description: "Develop a speculative premise — technological, social, or counterfactual — into a world with internal logic, character pressure, and a lived-in scene.",
     prompt: "Develop a speculative fiction premise about [concept / technology / social change / counterfactual], building out the internal logic of the world, the pressure it puts on its characters, and a scene or passage that makes it feel lived-in: [paste ideas, fragments, or constraints here]",
   },
-  {
-    kicker: "Administrative",
-    title: "Draft the Grant Narrative",
-    description: "Turn a project idea into a fundable narrative: significance, innovation, approach, and broader impact in the register of the funder.",
-    prompt: "Draft a grant proposal and narrative for [project / funding body / field], articulating the significance of the problem, the innovation of the approach, the feasibility of the plan, and the broader impact of the work in the register and priorities of the funder: [paste project description, aims, or existing draft here]",
-  },
-  {
-    kicker: "Administrative",
-    title: "Write the Recommendation",
-    description: "Give the facts and get back a draft that is warm, specific, and credible — calibrated to what selection committees in this context actually want to read.",
-    prompt: "Write a letter of recommendation for [person / position / program], drawing on the specific evidence provided to make a case that is warm, credible, and particular rather than generic, calibrated to what selection committees in this context are actually looking for: [paste facts, anecdotes, the candidate's materials, or your notes here]",
-  },
-  {
-    kicker: "Administrative",
-    title: "Write the Abstract",
-    description: "Turn a paper, project, or presentation into a tight abstract that does the work: stakes, method, argument, contribution — in the word count and register the venue requires.",
-    prompt: "Write an abstract for this paper for [venue / audience], briefly summarizing the main thesis, then articulating the stakes, method, central argument, and contribution in the register the audience expects: [paste draft, notes, or key claims here]",
-  },
-  {
-    kicker: "Administrative",
-    title: "Review the Application",
-    description: "Hand over an application packet and get back a structured review: what is strongest, what is weakest, how it fits the criteria, and a defensible recommendation.",
-    prompt: "Review this application for [position / grant / program], identifying its strongest elements, its weakest, how well it fits the stated criteria, what questions or concerns it raises, and a defensible recommendation with reasoning: [paste application materials, rubric, or evaluation criteria here]",
-  },
+  // {
+  //   kicker: "Administrative",
+  //   title: "Draft the Grant Narrative",
+  //   description: "Turn a project idea into a fundable narrative: significance, innovation, approach, and broader impact in the register of the funder.",
+  //   prompt: "Draft a grant proposal and narrative for [project / funding body / field], articulating the significance of the problem, the innovation of the approach, the feasibility of the plan, and the broader impact of the work in the register and priorities of the funder: [paste project description, aims, or existing draft here]",
+  // },
+  // {
+  //   kicker: "Administrative",
+  //   title: "Write the Recommendation",
+  //   description: "Give the facts and get back a draft that is warm, specific, and credible — calibrated to what selection committees in this context actually want to read.",
+  //   prompt: "Write a letter of recommendation for [person / position / program], drawing on the specific evidence provided to make a case that is warm, credible, and particular rather than generic, calibrated to what selection committees in this context are actually looking for: [paste facts, anecdotes, the candidate's materials, or your notes here]",
+  // },
+  // {
+  //   kicker: "Administrative",
+  //   title: "Write the Abstract",
+  //   description: "Turn a paper, project, or presentation into a tight abstract that does the work: stakes, method, argument, contribution — in the word count and register the venue requires.",
+  //   prompt: "Write an abstract for this paper for [venue / audience], briefly summarizing the main thesis, then articulating the stakes, method, central argument, and contribution in the register the audience expects: [paste draft, notes, or key claims here]",
+  // },
+  // {
+  //   kicker: "Administrative",
+  //   title: "Review the Application",
+  //   description: "Hand over an application packet and get back a structured review: what is strongest, what is weakest, how it fits the criteria, and a defensible recommendation.",
+  //   prompt: "Review this application for [position / grant / program], identifying its strongest elements, its weakest, how well it fits the stated criteria, what questions or concerns it raises, and a defensible recommendation with reasoning: [paste application materials, rubric, or evaluation criteria here]",
+  // },
   {
     kicker: "Educate",
     title: "Explain the Concept",
@@ -219,12 +219,12 @@ export const STARTER_POOL = [
 ];
 
 export function getStarterPrompts() {
-  const pool = STARTER_POOL.slice();
+  const pool = [ETHICS_PROMPT, ...STARTER_POOL];
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
-  return [pool[0], ETHICS_PROMPT, pool[1], pool[2]];
+  return pool.slice(0, 4);
 }
 
 export const PROMPT_ORDER = [

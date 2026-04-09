@@ -4,17 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>BartlebyGPT</title>
-  <script>
-    (function () {
-      var v = Date.now().toString(36);
-      window.__assetVersion = v;
-      var link = document.createElement("link");
-      link.rel = "stylesheet";
-      link.href = "./assets/styles.css?v=" + encodeURIComponent(v);
-      document.head.appendChild(link);
-    })();
-  </script>
-  <noscript><link rel="stylesheet" href="./assets/styles.css"></noscript>
+  <link rel="stylesheet" href="./assets/styles.min.css?v=20260409c2">
   <script>
     window.goatcounter = window.goatcounter || {};
     Object.assign(window.goatcounter, {
@@ -220,16 +210,6 @@
       <div id="power-modal-body"></div>
     </div>
   </div>
-
-  <script>
-    (function () {
-      var v = window.__assetVersion || Date.now().toString(36);
-      var script = document.createElement("script");
-      script.type = "module";
-      script.src = "./app/main.js?v=" + encodeURIComponent(v);
-      document.body.appendChild(script);
-    })();
-  </script>
-  <noscript><script type="module" src="./app/main.js"></script></noscript>
+  <script type="module" src="./assets/app.bundle.js?v=20260409c2"></script>
 </body>
 </html>
