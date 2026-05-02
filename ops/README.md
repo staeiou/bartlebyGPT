@@ -242,3 +242,6 @@ On headless Jetson deployments, unused audio and camera kernel modules waste sig
 - `run-stack.sh` process mode is best for pod/container and for live web+tunnel foreground runs.
 - Pi systemd scripts are best for persistent inference service management on bare metal.
 - `STACK_MODE=systemd` in `run-stack.sh` is a dispatcher for bootstrap scripts, not a full-systemd replacement for every component.
+- The off-grid Jetson's USB 4G dongle is RNDIS/CDC Ethernet, not a ModemManager modem.
+  Keep it primary via netplan route metric `50` and Wi-Fi fallback at metric `200`; see
+  `ops/runbooks/jetson.md` before changing `/etc/netplan` or USB link naming.
