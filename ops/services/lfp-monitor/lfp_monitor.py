@@ -82,7 +82,11 @@ JBD_CHAR_N = "0000ff01-0000-1000-8000-00805f9b34fb"
 CSV_FIELDS = [
     "timestamp", "soc_pct", "temp_c", "voltage_mv",
     "solar_input_w", "load_w", "remaining_ah", "nominal_ah",
-    "net_current_ma", "charge_state", "ble_connected_jbd", "ble_connected_victron",
+    "net_current_ma", "charge_state",
+    "victron_model_name", "victron_charge_state", "victron_charger_error",
+    "victron_battery_voltage_v", "victron_battery_charging_current_a",
+    "victron_external_device_load_a", "victron_manufacturer_id",
+    "ble_connected_jbd", "ble_connected_victron",
 ]
 JBD_DEBUG_FIELDS = [
     "timestamp",
@@ -96,6 +100,22 @@ JBD_DEBUG_FIELDS = [
     "soc_pct_derived",
     "temp_c",
 ] + [f"b{i:02d}" for i in range(64)]
+VICTRON_DEBUG_FIELDS = [
+    "timestamp",
+    "reading_ts",
+    "manufacturer_id",
+    "raw_hex",
+    "payload_len",
+    "model_name",
+    "charge_state",
+    "charger_error",
+    "battery_voltage_v",
+    "battery_charging_current_a",
+    "yield_today_wh",
+    "solar_power_w",
+    "external_device_load_a",
+    "load_w",
+]
 
 STATE_LOCK = threading.Lock()
 STATE = {
@@ -116,6 +136,13 @@ STATE = {
     "solar_input_w": None,
     "load_w": None,
     "yield_today_wh": None,
+    "victron_model_name": None,
+    "victron_charge_state": None,
+    "victron_charger_error": None,
+    "victron_battery_voltage_v": None,
+    "victron_battery_charging_current_a": None,
+    "victron_external_device_load_a": None,
+    "victron_manufacturer_id": None,
     # Derived
     "hours_remaining": None,
     # Meta
@@ -196,6 +223,40 @@ def append_jbd_debug_row(reading_ts: float, raw: bytes, parsed: dict):
     write_header = not csv_path.exists() or csv_path.stat().st_size == 0
     with open(csv_path, "a", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=JBD_DEBUG_FIELDS)
+        if write_header:
+            writer.writeheader()
+        writer.writerow(row)
+
+
+def _stringify_victron_value(value):
+    if value is None:
+        return None
+    return str(value)
+
+
+def append_victron_debug_row(reading_ts: float, manufacturer_id: int, raw: bytes, parsed: dict, load_w):
+    CSV_DIR.mkdir(parents=True, exist_ok=True)
+    ts = datetime.fromtimestamp(reading_ts, tz=timezone.utc)
+    row = {
+        "timestamp": ts.isoformat(),
+        "reading_ts": f"{reading_ts:.6f}",
+        "manufacturer_id": manufacturer_id,
+        "raw_hex": raw.hex(),
+        "payload_len": len(raw),
+        "model_name": parsed.get("model_name"),
+        "charge_state": parsed.get("charge_state"),
+        "charger_error": parsed.get("charger_error"),
+        "battery_voltage_v": parsed.get("battery_voltage_v"),
+        "battery_charging_current_a": parsed.get("battery_charging_current_a"),
+        "yield_today_wh": parsed.get("yield_today_wh"),
+        "solar_power_w": parsed.get("solar_power_w"),
+        "external_device_load_a": parsed.get("external_device_load_a"),
+        "load_w": load_w,
+    }
+    csv_path = CSV_DIR / f"victron-adv-{ts.strftime('%Y-%m-%d')}.csv"
+    write_header = not csv_path.exists() or csv_path.stat().st_size == 0
+    with open(csv_path, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=VICTRON_DEBUG_FIELDS)
         if write_header:
             writer.writeheader()
         writer.writerow(row)
@@ -362,15 +423,21 @@ async def jbd_query_once(client: BleakClient, cmd: int, timeout: float = 8.0) ->
 # (well under VICTRON_ADV_TIMEOUT=30s, so no false timeout warnings).
 # ---------------------------------------------------------------------------
 
-def update_state_victron(solar_w, load_w, battery_voltage_v, charge_state, yield_today_wh):
-    now = time.time()
+def update_state_victron(reading_ts: float, parsed: dict, manufacturer_id: int, load_w):
     with STATE_LOCK:
-        STATE["timestamp"] = now
-        STATE["victron_reading_ts"] = now
-        STATE["solar_input_w"] = solar_w
+        STATE["timestamp"] = reading_ts
+        STATE["victron_reading_ts"] = reading_ts
+        STATE["solar_input_w"] = parsed.get("solar_power_w")
         STATE["load_w"] = load_w
-        STATE["yield_today_wh"] = yield_today_wh
-        STATE["charge_state"] = str(charge_state) if charge_state is not None else None
+        STATE["yield_today_wh"] = parsed.get("yield_today_wh")
+        STATE["charge_state"] = parsed.get("charge_state")
+        STATE["victron_model_name"] = parsed.get("model_name")
+        STATE["victron_charge_state"] = parsed.get("charge_state")
+        STATE["victron_charger_error"] = parsed.get("charger_error")
+        STATE["victron_battery_voltage_v"] = parsed.get("battery_voltage_v")
+        STATE["victron_battery_charging_current_a"] = parsed.get("battery_charging_current_a")
+        STATE["victron_external_device_load_a"] = parsed.get("external_device_load_a")
+        STATE["victron_manufacturer_id"] = manufacturer_id
         STATE["ble_connected_victron"] = True
         STATE["last_error_victron"] = ""
 
@@ -492,19 +559,22 @@ async def victron_loop(victron_queue: asyncio.Queue):
         for _mfr_id, data in mfr_data.items():
             try:
                 result = SolarCharger(VICTRON_KEY).parse(data)
-                solar_w = result.get_solar_power()
-                load_a = result.get_external_device_load()
-                batt_v = result.get_battery_voltage()
+                parsed = {
+                    "model_name": result.get_model_name(),
+                    "charge_state": _stringify_victron_value(result.get_charge_state()),
+                    "charger_error": _stringify_victron_value(result.get_charger_error()),
+                    "battery_voltage_v": result.get_battery_voltage(),
+                    "battery_charging_current_a": result.get_battery_charging_current(),
+                    "yield_today_wh": result.get_yield_today(),
+                    "solar_power_w": result.get_solar_power(),
+                    "external_device_load_a": result.get_external_device_load(),
+                }
+                load_a = parsed.get("external_device_load_a")
+                batt_v = parsed.get("battery_voltage_v")
                 load_w = round(load_a * batt_v, 1) if (load_a is not None and batt_v is not None) else None
-                charge_state = result.get_charge_state()
-                yield_today = result.get_yield_today()
-                update_state_victron(
-                    solar_w=solar_w,
-                    load_w=load_w,
-                    battery_voltage_v=batt_v,
-                    charge_state=charge_state,
-                    yield_today_wh=yield_today,
-                )
+                reading_ts = time.time()
+                update_state_victron(reading_ts=reading_ts, parsed=parsed, manufacturer_id=_mfr_id, load_w=load_w)
+                append_victron_debug_row(reading_ts, _mfr_id, data, parsed, load_w)
             except Exception as err:
                 log.warning("Victron: parse error: %s", err)
                 with STATE_LOCK:
@@ -681,6 +751,13 @@ class Handler(BaseHTTPRequestHandler):
                 "battery_nominal_ah": s.get("nominal_ah"),
                 "battery_net_current_ma": s.get("net_current_ma"),
                 "battery_yield_today_wh": s.get("yield_today_wh"),
+                "victron_model_name": s.get("victron_model_name"),
+                "victron_charge_state": s.get("victron_charge_state"),
+                "victron_charger_error": s.get("victron_charger_error"),
+                "victron_battery_voltage_v": s.get("victron_battery_voltage_v"),
+                "victron_battery_charging_current_a": s.get("victron_battery_charging_current_a"),
+                "victron_external_device_load_a": s.get("victron_external_device_load_a"),
+                "victron_manufacturer_id": s.get("victron_manufacturer_id"),
                 # solix_* aliases for power_telemetry.py compat (remove after Step 5)
                 "solix_soc_pct": s.get("soc_pct"),
                 "solix_solar_input_w": solar_w,

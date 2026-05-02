@@ -64,6 +64,13 @@ Solar panel → Victron MPPT → [load output → Jetson]
 | `battery_remaining_ah` | JBD | Remaining capacity Ah |
 | `battery_net_current_ma` | JBD | Net current mA (+ = charging, - = discharging) |
 | `battery_yield_today_wh` | Victron | Solar yield today Wh |
+| `victron_model_name` | Victron | Parsed device model name |
+| `victron_charge_state` | Victron | Parsed charge-state enum |
+| `victron_charger_error` | Victron | Parsed charger-error enum |
+| `victron_battery_voltage_v` | Victron | Parsed battery voltage V |
+| `victron_battery_charging_current_a` | Victron | Parsed charging current A |
+| `victron_external_device_load_a` | Victron | Parsed external load current A |
+| `victron_manufacturer_id` | Victron | BLE manufacturer-data key for the parsed payload |
 | `solix_*` | — | Compat aliases for `power_telemetry.py` — remove after Step 5 cleanup |
 
 ## Required secrets
@@ -153,6 +160,11 @@ stuck state after rapid service restarts or after being held in a connection too
 - JBD "device not seen in scan" retries at `JBD_POLL_INTERVAL` (60s), not
   `RECONNECT_DELAY` (10s). This prevents flaky JBD from starving Victron scan time.
 - The combined telemetry CSV is written as `battery-YYYY-MM-DD.csv`.
+- Every successful Victron advertisement parse appends a raw packet log to `victron-adv-YYYY-MM-DD.csv`:
+  - raw manufacturer payload hex plus every parsed field exposed by `victron_ble`
+  - `model_name`, `charge_state`, `charger_error`, `battery_voltage_v`,
+    `battery_charging_current_a`, `yield_today_wh`, `solar_power_w`,
+    `external_device_load_a`, and derived `load_w`
 - Every successful JBD read appends a raw packet log to `jbd-basic-YYYY-MM-DD.csv`:
   - full raw packet hex, decoded core values, every payload byte in `b00...` columns
   - this is the best local forensic record short of a live `btmon` capture

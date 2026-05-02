@@ -356,10 +356,8 @@ def read_esphome_power_watts():
     if "last_error" in payload:
         extra["solix_last_error"] = str(payload.get("last_error") or "")
 
-    if not ble_connected:
-        raise EsphomeFeedError("esphome battery feed disconnected", extra=extra)
-
     power_feed_ts_f = safe_float(power_feed_ts, lo=0.0)
+    age_seconds = None
     if SOLIX_STALE_SECONDS > 0 and power_feed_ts_f is not None:
         age_seconds = time.time() - power_feed_ts_f
         if age_seconds > SOLIX_STALE_SECONDS:
@@ -371,6 +369,9 @@ def read_esphome_power_watts():
                 f"esphome power feed reading stale by {age_seconds:.1f}s (>{SOLIX_STALE_SECONDS:.1f}s); {recovery_note}",
                 extra=extra,
             )
+
+    if not ble_connected and (power_feed_ts_f is None or SOLIX_STALE_SECONDS <= 0):
+        raise EsphomeFeedError("esphome battery feed disconnected", extra=extra)
 
     raw_value = payload.get("value")
     if raw_value is None and "value" not in payload:
