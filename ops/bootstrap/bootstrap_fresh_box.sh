@@ -342,6 +342,16 @@ install_battery_monitor() {
   "${SUDO[@]}" systemctl restart "${service_name}"
 }
 
+install_ups_hat_logger() {
+  if [[ "${ENABLE_UPS_HAT_LOGGER:-0}" != "1" ]]; then
+    log "UPS HAT logger not enabled for this profile"
+    return
+  fi
+
+  log "Installing UPS HAT logger"
+  run_with_profile "${OPS_DIR}/bootstrap/bootstrap_ups_hat_monitor.sh"
+}
+
 install_bartleby_stack_service() {
   log "Installing/restarting bartleby-stack service"
   run_with_profile "${OPS_DIR}/bootstrap/bootstrap_stack_service.sh"
@@ -530,6 +540,7 @@ main() {
   install_cloudflared_service "${CLOUDFLARE_TUNNEL_TOKEN:-}"
   ensure_inference_ready
   install_battery_monitor
+  install_ups_hat_logger
   install_bartleby_stack_service
   wait_for_public_health
   wait_for_telemetry_health
@@ -541,6 +552,7 @@ main() {
   echo "  sudo systemctl status bartleby-stack --no-pager -n 80"
   echo "  sudo systemctl status cloudflared --no-pager -n 80"
   echo "  sudo systemctl status solix-monitor --no-pager -n 80"
+  echo "  sudo systemctl status ups-hat-monitor --no-pager -n 80"
 }
 
 main "$@"

@@ -1,0 +1,23 @@
+[Unit]
+Description=Waveshare UPS HAT INA219 Logger
+After=local-fs.target
+
+[Service]
+Type=simple
+User={{UPS_HAT_LOGGER_USER}}
+WorkingDirectory={{UPS_HAT_LOGGER_WORKDIR}}
+ExecStart={{UPS_HAT_LOGGER_PYTHON}} {{UPS_HAT_LOGGER_SCRIPT}}
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+UMask=0022
+
+Environment=UPS_HAT_I2C_BUS={{UPS_HAT_I2C_BUS}}
+Environment=UPS_HAT_I2C_ADDR={{UPS_HAT_I2C_ADDR}}
+Environment=UPS_HAT_LOG_INTERVAL={{UPS_HAT_LOG_INTERVAL}}
+Environment=UPS_HAT_LOG_DIR={{UPS_HAT_LOG_DIR}}
+Environment=UPS_HAT_SQLITE_PATH={{UPS_HAT_SQLITE_PATH}}
+
+[Install]
+WantedBy=multi-user.target
