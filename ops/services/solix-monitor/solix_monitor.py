@@ -44,15 +44,32 @@ for candidate in (SCRIPT_DIR, OPS_DIR):
 
 from history_store import SQLiteHistoryStore
 
+
+def _env(*names, default=None):
+    """Return the first environment variable that is set among ``names``.
+
+    Generic battery-monitor knobs use the canonical ``BATT_*`` namespace; the legacy
+    ``SOLIX_*`` names remain as a fallback for already-deployed units. Note that the
+    Solix *device* address and the Solix-protocol timeouts below keep their SOLIX_
+    names because they are genuinely Anker-Solix-specific, not part of the generic
+    battery-monitor contract.
+    """
+    for name in names:
+        val = os.environ.get(name)
+        if val is not None:
+            return val
+    return default
+
+
 BLE_ADDR      = os.environ.get("SOLIX_BLE_ADDR", "F4:9D:8A:83:D3:24")
-HOST          = os.environ.get("SOLIX_HOST", "127.0.0.1")
-PORT          = int(os.environ.get("SOLIX_PORT", "18082"))
-CSV_DIR       = Path(os.environ.get("SOLIX_CSV_DIR", str(Path(__file__).parent / "logs")))
-CSV_INTERVAL  = float(os.environ.get("SOLIX_CSV_INTERVAL", "60"))
-CAPACITY_WH   = float(os.environ.get("SOLIX_CAPACITY_WH", "288"))
-RECONNECT_DELAY = float(os.environ.get("SOLIX_RECONNECT_DELAY", "10"))
-SCAN_TIMEOUT = max(2.0, float(os.environ.get("SOLIX_SCAN_TIMEOUT", "10")))
-HISTORY_DB_PATH = os.environ.get("SOLIX_HISTORY_DB_PATH", "").strip()
+HOST          = _env("BATT_HOST", "SOLIX_HOST", default="127.0.0.1")
+PORT          = int(_env("BATT_PORT", "SOLIX_PORT", default="18082"))
+CSV_DIR       = Path(_env("BATT_CSV_DIR", "SOLIX_CSV_DIR", default=str(Path(__file__).parent / "logs")))
+CSV_INTERVAL  = float(_env("BATT_CSV_INTERVAL", "SOLIX_CSV_INTERVAL", default="60"))
+CAPACITY_WH   = float(_env("BATT_CAPACITY_WH", "SOLIX_CAPACITY_WH", default="288"))
+RECONNECT_DELAY = float(_env("BATT_RECONNECT_DELAY", "SOLIX_RECONNECT_DELAY", default="10"))
+SCAN_TIMEOUT = max(2.0, float(_env("BATT_SCAN_TIMEOUT", "SOLIX_SCAN_TIMEOUT", default="10")))
+HISTORY_DB_PATH = _env("BATT_HISTORY_DB_PATH", "SOLIX_HISTORY_DB_PATH", default="").strip()
 FIRST_PACKET_TIMEOUT = max(3.0, float(os.environ.get("SOLIX_FIRST_PACKET_TIMEOUT", "12")))
 PACKET_IDLE_TIMEOUT = max(FIRST_PACKET_TIMEOUT, float(os.environ.get("SOLIX_PACKET_IDLE_TIMEOUT", "15")))
 PROCESS_RESET_AFTER_FAILURES = max(1, int(os.environ.get("SOLIX_PROCESS_RESET_AFTER_FAILURES", "30")))

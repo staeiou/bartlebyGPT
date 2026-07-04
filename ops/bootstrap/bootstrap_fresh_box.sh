@@ -275,23 +275,40 @@ install_battery_monitor() {
   local monitor_script_name
   monitor_script_name="$(basename "${monitor_src}")"
 
+  # Canonical BATT_* battery-monitor knobs; legacy SOLIX_* names are still honored
+  # as a fallback so existing profiles/secrets files keep working.
   local service_name="${BATTERY_MONITOR_SERVICE_NAME:-solix-monitor}"
   local workdir="${BATTERY_MONITOR_WORKDIR:-${SOLIX_MONITOR_WORKDIR:-/opt/bartleby/solix-monitor}}"
-  local logs_dir="${SOLIX_CSV_DIR:-${workdir}/logs}"
-  local history_db_path="${SOLIX_HISTORY_DB_PATH:-${logs_dir}/history.sqlite3}"
-  local ble_addr="${SOLIX_BLE_ADDR:-}"
-  local host="${SOLIX_HOST:-127.0.0.1}"
-  local port="${SOLIX_PORT:-18082}"
-  local csv_interval="${SOLIX_CSV_INTERVAL:-60}"
-  local capacity_wh="${SOLIX_CAPACITY_WH:-288}"
-  local reconnect_delay="${SOLIX_RECONNECT_DELAY:-10}"
+  local logs_dir="${BATT_CSV_DIR:-${SOLIX_CSV_DIR:-${workdir}/logs}}"
+  local history_db_path="${BATT_HISTORY_DB_PATH:-${SOLIX_HISTORY_DB_PATH:-${logs_dir}/history.sqlite3}}"
+  local battery_monitor_ble_addr="${BATTERY_MONITOR_BLE_ADDR:-}"
+  local solix_ble_addr="${SOLIX_BLE_ADDR:-}"
+  local host="${BATT_HOST:-${SOLIX_HOST:-127.0.0.1}}"
+  local port="${BATT_PORT:-${SOLIX_PORT:-18082}}"
+  local csv_interval="${BATT_CSV_INTERVAL:-${SOLIX_CSV_INTERVAL:-60}}"
+  local capacity_wh="${BATT_CAPACITY_WH:-${SOLIX_CAPACITY_WH:-288}}"
+  local reconnect_delay="${BATT_RECONNECT_DELAY:-${SOLIX_RECONNECT_DELAY:-10}}"
   local victron_addr="${VICTRON_BLE_ADDR:-}"
   local victron_key="${VICTRON_ENCRYPTION_KEY:-}"
-  local venv="${SOLIX_MONITOR_VENV:-/opt/bartleby-solix-venv}"
+  local venv="${BATTERY_MONITOR_VENV:-${SOLIX_MONITOR_VENV:-/opt/bartleby-solix-venv}}"
 
-  if [[ -z "${ble_addr}" ]]; then
-    echo "SOLIX_BLE_ADDR is required when installing battery monitor; refusing to fall back to a default MAC." >&2
+  # BATTERY_MONITOR_BLE_ADDR is the generic monitor device address. SOLIX_BLE_ADDR
+  # remains supported for legacy Solix profiles and secrets files.
+  if [[ -z "${battery_monitor_ble_addr}" ]]; then
+    battery_monitor_ble_addr="${solix_ble_addr}"
+  fi
+  if [[ "${monitor_script_name}" == "solix_monitor.py" && -z "${solix_ble_addr}" ]]; then
+    solix_ble_addr="${battery_monitor_ble_addr}"
+  fi
+
+  if [[ -z "${battery_monitor_ble_addr}" ]]; then
+    echo "BATTERY_MONITOR_BLE_ADDR or SOLIX_BLE_ADDR is required when installing battery monitor; refusing to fall back to a default MAC." >&2
     exit 1
+  fi
+
+  local solix_ble_addr_env="# SOLIX_BLE_ADDR not used by this battery monitor"
+  if [[ "${monitor_script_name}" == "solix_monitor.py" ]]; then
+    solix_ble_addr_env="Environment=SOLIX_BLE_ADDR=${solix_ble_addr}"
   fi
 
   log "Installing battery monitor service (${service_name})"
@@ -323,7 +340,8 @@ install_battery_monitor() {
     "BATTERY_MONITOR_WORKDIR=${workdir}" \
     "BATTERY_MONITOR_PYTHON=${venv}/bin/python" \
     "BATTERY_MONITOR_SCRIPT=${workdir}/${monitor_script_name}" \
-    "BLE_ADDR=${ble_addr}" \
+    "BLE_ADDR=${battery_monitor_ble_addr}" \
+    "SOLIX_BLE_ADDR_ENV=${solix_ble_addr_env}" \
     "MONITOR_HOST=${host}" \
     "MONITOR_PORT=${port}" \
     "MONITOR_CSV_DIR=${logs_dir}" \

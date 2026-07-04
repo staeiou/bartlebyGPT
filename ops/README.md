@@ -202,6 +202,8 @@ SOC is derived from `remaining_ah / nominal_ah` — the BMS-reported SOC% is unr
 
 - Logs to `/opt/bartleby/lfp-monitor/logs/battery-YYYY-MM-DD.csv` every 60s
 - Logs raw JBD packets to `/opt/bartleby/lfp-monitor/logs/jbd-basic-YYYY-MM-DD.csv`
+- Uses `BATTERY_MONITOR_BLE_ADDR` for the JBD BMS address. Do not use `SOLIX_BLE_ADDR`
+  for this profile; that name is reserved for Anker Solix deployments and legacy secrets.
 - Requires `VICTRON_ENCRYPTION_KEY` in `/root/bartleby-secrets.env`
 - Installed by `bootstrap_fresh_box.sh` with `ENABLE_BATTERY_MONITOR=1` and `BATTERY_MONITOR_SCRIPT=./ops/services/lfp-monitor/lfp_monitor.py`
 

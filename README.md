@@ -41,4 +41,4 @@ Do not treat `/opt/bartleby/*` or `/var/www/bartlebygpt/` as source of truth.
 
 For Solix deployments (`api-jetson`, `rpi4-llama-live`), `SOLIX_BLE_ADDR` must be provided per machine. The bootstrap refuses to fall back to a default MAC.
 
-For the LFP deployment (`jetson-solar-lfp`), `SOLIX_BLE_ADDR` (JBD BMS) and `VICTRON_ENCRYPTION_KEY` must be set — the key goes in `/root/bartleby-secrets.env`, not the profile.
+For the LFP deployment (`jetson-solar-lfp`), the JBD BMS address is set as `BATTERY_MONITOR_BLE_ADDR` in the profile. `VICTRON_ENCRYPTION_KEY` must be set in `/root/bartleby-secrets.env`.

@@ -13,17 +13,18 @@ RestartSec=10
 StandardOutput=journal
 StandardError=journal
 
-# Generic name — read by lfp_monitor and any future monitor.
+# Generic device address — read by lfp_monitor and any future monitor.
 Environment=BLE_ADDR={{BLE_ADDR}}
-# Solix-compat alias — read by solix_monitor.py.
-Environment=SOLIX_BLE_ADDR={{BLE_ADDR}}
-Environment=SOLIX_HOST={{MONITOR_HOST}}
-Environment=SOLIX_PORT={{MONITOR_PORT}}
-Environment=SOLIX_CSV_DIR={{MONITOR_CSV_DIR}}
-Environment=SOLIX_CSV_INTERVAL={{MONITOR_CSV_INTERVAL}}
-Environment=SOLIX_HISTORY_DB_PATH={{MONITOR_HISTORY_DB_PATH}}
-Environment=SOLIX_CAPACITY_WH={{MONITOR_CAPACITY_WH}}
-Environment=SOLIX_RECONNECT_DELAY={{MONITOR_RECONNECT_DELAY}}
+# Solix-specific device address — emitted only for solix_monitor.py.
+{{SOLIX_BLE_ADDR_ENV}}
+# Canonical BATT_* battery-monitor contract (both monitors read these).
+Environment=BATT_HOST={{MONITOR_HOST}}
+Environment=BATT_PORT={{MONITOR_PORT}}
+Environment=BATT_CSV_DIR={{MONITOR_CSV_DIR}}
+Environment=BATT_CSV_INTERVAL={{MONITOR_CSV_INTERVAL}}
+Environment=BATT_HISTORY_DB_PATH={{MONITOR_HISTORY_DB_PATH}}
+Environment=BATT_CAPACITY_WH={{MONITOR_CAPACITY_WH}}
+Environment=BATT_RECONNECT_DELAY={{MONITOR_RECONNECT_DELAY}}
 Environment=VICTRON_BLE_ADDR={{VICTRON_BLE_ADDR}}
 Environment=VICTRON_ENCRYPTION_KEY={{VICTRON_ENCRYPTION_KEY}}
 
