@@ -38,7 +38,7 @@ async def run(deployment: Deployment) -> None:
         len(deployment.sources),
     )
 
-    tasks = [asyncio.create_task(supervise(source, ctx), name=f"source:{source.kind}") for source in deployment.sources]
+    tasks = [asyncio.create_task(supervise(source, ctx), name=f"source:{source.id}") for source in deployment.sources]
     stop = asyncio.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         try:

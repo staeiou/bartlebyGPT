@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable, Protocol, runtime_checkable
 
 from .reading import Reading, Snapshot
@@ -28,15 +28,22 @@ class Driver(Protocol):
 
 @dataclass(frozen=True)
 class Source:
+    id: str
     kind: str
     role: str
     driver: Driver
     channels: tuple[str, ...]
     capabilities: dict
     reconnect_delay: float
+    stale_after_s: float
 
     async def run(self, ctx: SourceContext) -> None:
-        await self.driver.run(ctx)
+        source_id = self.id
+
+        def emit(reading: Reading) -> None:
+            ctx.emit(replace(reading, source_id=source_id))
+
+        await self.driver.run(SourceContext(emit=emit, log=ctx.log, ble=ctx.ble))
 
 
 @dataclass(frozen=True)
@@ -53,8 +60,9 @@ class Deployment:
     sources: tuple[Source, ...]
     capacity_wh: float
     cost_model: str
-    stale_after_s: float
     narrative_html: str
+    channel_priority: dict[str, tuple[str, ...]]
+    mode_channels: dict[str, tuple[str, ...]]
 
     def descriptor(self) -> dict:
         return {
@@ -66,34 +74,43 @@ class Deployment:
         }
 
 
-def roles_with_fresh_data(deployment: Deployment, snapshot: Snapshot, now: float) -> set[str]:
-    fresh = snapshot.fresh_channels(deployment.stale_after_s, now)
-    roles: set[str] = set()
-    for source in deployment.sources:
-        if any(channel in fresh for channel in source.channels):
-            roles.add(source.role)
-    return roles
+def source_stale_windows(deployment: Deployment) -> dict[str, float]:
+    return {source.id: source.stale_after_s for source in deployment.sources}
+
+
+def resolve_channels(deployment: Deployment, snapshot: Snapshot, now: float) -> dict[str, Reading]:
+    fresh = snapshot.fresh_by_source(source_stale_windows(deployment), now)
+    resolved: dict[str, Reading] = {}
+    for channel, readings in fresh.items():
+        for source_id in deployment.channel_priority.get(channel, ()):
+            if source_id in readings:
+                resolved[channel] = readings[source_id]
+                break
+        if channel not in resolved:
+            resolved[channel] = max(readings.values(), key=lambda reading: reading.ts)
+    return resolved
 
 
 def power_source_mode(deployment: Deployment, snapshot: Snapshot, now: float) -> str:
-    roles = roles_with_fresh_data(deployment, snapshot, now)
-    if ROLE_MAIN in roles:
+    resolved = resolve_channels(deployment, snapshot, now)
+    if any(channel in resolved for channel in deployment.mode_channels.get("main", ())):
         return "main"
-    if ROLE_UPS in roles:
+    if any(channel in resolved for channel in deployment.mode_channels.get("ups", ())):
         return "ups"
     return "unknown"
 
 
 def capabilities(deployment: Deployment, snapshot: Snapshot, now: float) -> dict:
-    fresh = snapshot.fresh_channels(deployment.stale_after_s, now)
+    resolved = resolve_channels(deployment, snapshot, now)
     source_caps: dict = {}
     for source in deployment.sources:
         for key, value in source.capabilities.items():
             source_caps[key] = source_caps.get(key, False) or value
     return {
-        "has_battery": "battery.soc_pct" in fresh,
-        "has_ups": "ups.soc_pct" in fresh,
-        "has_solar": "solar.input_w" in fresh,
+        "has_battery": "battery.soc_pct" in resolved,
+        "has_ups": "ups.soc_pct" in resolved,
+        "has_solar": "solar.input_w" in resolved,
+        "has_load": "load.w" in resolved or "wall.total_w" in resolved,
         "solar_measured": bool(source_caps.get("solar_measured")),
         "power_source_mode": power_source_mode(deployment, snapshot, now),
     }

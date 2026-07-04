@@ -18,9 +18,12 @@ Deployment config owns all choices for a deployment:
 
 - deployment id and label
 - HTTP host and port
-- capacity, cost model, stale window, and narrative copy
+- capacity, cost model, and narrative copy
 - source list
-- each source kind, role, reconnect delay, capabilities, and device parameters
+- each source id, kind, role, reconnect delay, stale window, capabilities, and
+  device parameters
+- channel priority when more than one device can report the same quantity
+- which fresh channels imply `main` or `ups` power-source mode
 
 Drivers own reusable device mechanics:
 
@@ -31,8 +34,25 @@ Drivers own reusable device mechanics:
 - blocking I/O adaptation
 
 Drivers must not choose deployment behavior. If a value may differ by site,
-battery, bus, address, port, stale policy, reconnect policy, or UI capability,
-it belongs in the deployment `CONFIG`.
+battery, bus, address, port, stale policy, reconnect policy, channel priority,
+mode rule, or UI capability, it belongs in the deployment `CONFIG`.
+
+## Device Composition
+
+The system must support both all-in-one devices and split-device deployments:
+
+- Solix C300X BLE: one BLE device reports battery, solar, and load.
+- Victron SmartSolar BLE + JBD BMS BLE: MPPT reports PV/load; BMS reports
+  battery state.
+- Victron SmartSolar BLE + Victron SmartShunt BLE: MPPT reports PV/load;
+  SmartShunt reports battery state.
+- Victron VE.Direct USB + Victron SmartShunt BLE: serial MPPT reports PV/load;
+  SmartShunt reports battery state.
+
+Because multiple devices can emit the same canonical channel, readings are stored
+by `(channel, source_id)`. The HTTP payload resolves one value per channel using
+the deployment's `channel_priority`; if no priority is configured for a channel,
+the freshest non-stale reading wins.
 
 ## Runtime Shape
 
@@ -60,10 +80,10 @@ Sources have one configured role:
 - `ups`: internal backup battery for the compute device
 - `meter`: compute-side or auxiliary meter that does not determine power source
 
-The runtime derives `power_source_mode`:
+The runtime derives `power_source_mode` from configured channel lists:
 
-- `main`: any `main` source has a fresh reading
-- `ups`: no fresh `main` source, but an `ups` source is fresh
+- `main`: any channel in `mode_channels.main` resolves fresh
+- `ups`: no fresh main channel, but any channel in `mode_channels.ups` resolves fresh
 - `unknown`: neither path has fresh data
 
 This handles both UPS-only deployments and a normal deployment whose main power
@@ -77,16 +97,19 @@ Implemented:
 - channel registry and snapshot
 - HTTP payload
 - source supervision
+- per-source freshness
+- source-aware channel resolution
 - simulated driver
 - VE.Direct driver
 - INA219 driver
-- simulated deployment proving `main -> ups` stale transition
+- pure-data recipes for Solix, Victron MPPT + JBD, Victron MPPT + SmartShunt,
+  VE.Direct MPPT + SmartShunt, and simulated transition testing
 
 Not implemented yet:
 
 - history writer
-- BLE source drivers
+- BLE source drivers (placeholder classes validate config and declare channels,
+  but raise if run)
 - vLLM/load source driver
 - nginx/systemd cutover
 - frontend capability-driven rendering
-

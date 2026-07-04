@@ -5,6 +5,12 @@ from pathlib import Path
 from typing import Any
 
 from .deployment import Deployment, HttpConfig, Source, VALID_ROLES
+from ..drivers.ble_placeholders import (
+    JbdBmsBleDriver,
+    SolixC300xBleDriver,
+    VictronMpptBleDriver,
+    VictronSmartShuntBleDriver,
+)
 from ..drivers.ina219 import Ina219Driver
 from ..drivers.simulated import SimulatedDriver
 from ..drivers.victron_vedirect import VeDirectDriver
@@ -12,7 +18,11 @@ from ..drivers.victron_vedirect import VeDirectDriver
 
 DRIVERS = {
     "ina219": Ina219Driver,
+    "jbd-bms-ble": JbdBmsBleDriver,
     "simulated": SimulatedDriver,
+    "solix-c300x-ble": SolixC300xBleDriver,
+    "victron-mppt-ble": VictronMpptBleDriver,
+    "victron-smartshunt-ble": VictronSmartShuntBleDriver,
     "victron-vedirect": VeDirectDriver,
 }
 
@@ -22,11 +32,12 @@ REQUIRED_DEPLOYMENT_KEYS = {
     "http",
     "capacity_wh",
     "cost_model",
-    "stale_after_s",
     "narrative_html",
+    "channel_priority",
+    "mode_channels",
     "sources",
 }
-REQUIRED_SOURCE_KEYS = {"kind", "role", "reconnect_delay", "capabilities"}
+REQUIRED_SOURCE_KEYS = {"id", "kind", "role", "reconnect_delay", "stale_after_s", "capabilities"}
 
 
 class ConfigError(ValueError):
@@ -87,20 +98,39 @@ def _source_from_config(index: int, config: dict[str, Any]) -> Source:
     driver_config = {
         key: value
         for key, value in config.items()
-        if key not in {"kind", "role", "reconnect_delay", "capabilities"}
+        if key not in {"id", "kind", "role", "reconnect_delay", "stale_after_s", "capabilities"}
     }
-    driver = DRIVERS[kind].from_config(driver_config)
+    try:
+        driver = DRIVERS[kind].from_config(driver_config)
+    except ValueError as err:
+        raise ConfigError(f"{label}: {err}") from err
     reconnect_delay = _number(f"{label}.reconnect_delay", config["reconnect_delay"])
     if reconnect_delay <= 0:
         raise ConfigError(f"{label}.reconnect_delay: must be > 0")
+    stale_after_s = _number(f"{label}.stale_after_s", config["stale_after_s"])
+    if stale_after_s <= 0:
+        raise ConfigError(f"{label}.stale_after_s: must be > 0")
     return Source(
+        id=str(config["id"]),
         kind=kind,
         role=role,
         driver=driver,
         channels=driver.channels,
         capabilities=dict(capabilities),
         reconnect_delay=reconnect_delay,
+        stale_after_s=stale_after_s,
     )
+
+
+def _tuple_map(label: str, config: Any) -> dict[str, tuple[str, ...]]:
+    if not isinstance(config, dict):
+        raise ConfigError(f"{label}: expected dict")
+    result: dict[str, tuple[str, ...]] = {}
+    for key, values in config.items():
+        if not isinstance(values, list):
+            raise ConfigError(f"{label}.{key}: expected list")
+        result[str(key)] = tuple(str(value) for value in values)
+    return result
 
 
 def deployment_from_config(config: dict[str, Any]) -> Deployment:
@@ -113,15 +143,28 @@ def deployment_from_config(config: dict[str, Any]) -> Deployment:
     if not isinstance(sources_config, list) or not sources_config:
         raise ConfigError("CONFIG.sources: expected non-empty list")
 
+    sources = tuple(_source_from_config(index, source) for index, source in enumerate(sources_config))
+    source_ids = [source.id for source in sources]
+    duplicate_ids = sorted({source_id for source_id in source_ids if source_ids.count(source_id) > 1})
+    if duplicate_ids:
+        raise ConfigError(f"CONFIG.sources: duplicate source id(s): {', '.join(duplicate_ids)}")
+    source_id_set = set(source_ids)
+    channel_priority = _tuple_map("CONFIG.channel_priority", config["channel_priority"])
+    for channel, priorities in channel_priority.items():
+        unknown = sorted(set(priorities) - source_id_set)
+        if unknown:
+            raise ConfigError(f"CONFIG.channel_priority.{channel}: unknown source id(s): {', '.join(unknown)}")
+
     return Deployment(
         id=str(config["id"]),
         label=str(config["label"]),
         http=HttpConfig(host=str(http["host"]), port=int(http["port"])),
         capacity_wh=_number("CONFIG.capacity_wh", config["capacity_wh"]),
         cost_model=str(config["cost_model"]),
-        stale_after_s=_number("CONFIG.stale_after_s", config["stale_after_s"]),
         narrative_html=str(config["narrative_html"]),
-        sources=tuple(_source_from_config(index, source) for index, source in enumerate(sources_config)),
+        channel_priority=channel_priority,
+        mode_channels=_tuple_map("CONFIG.mode_channels", config["mode_channels"]),
+        sources=sources,
     )
 
 

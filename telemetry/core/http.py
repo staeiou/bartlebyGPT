@@ -11,11 +11,12 @@ from .channels import channel_meta
 def build_payload(deployment, snapshot, now: float | None = None) -> dict:
     now = time.time() if now is None else now
     channels = {}
-    for name, reading in snapshot.view().items():
+    for name, reading in dep.resolve_channels(deployment, snapshot, now).items():
         meta = channel_meta(name)
         channels[name] = {
             "value": reading.value,
             "ts": reading.ts,
+            "source_id": reading.source_id,
             "unit": meta.unit if meta else "",
             "label": meta.label if meta else name,
             "group": meta.group if meta else "",

@@ -1,0 +1,38 @@
+CONFIG = {
+    "id": "victron-mppt-usb-smartshunt",
+    "label": "Victron SmartSolar VE.Direct + SmartShunt BLE",
+    "http": {"host": "127.0.0.1", "port": 18082},
+    "capacity_wh": 1280,
+    "cost_model": "solar-zero",
+    "narrative_html": "<p>VE.Direct MPPT provides solar/load; SmartShunt BLE provides battery state.</p>",
+    "channel_priority": {
+        "battery.voltage_v": ["smartshunt", "mppt-usb"],
+        "battery.current_a": ["smartshunt", "mppt-usb"],
+    },
+    "mode_channels": {
+        "main": ["load.w", "solar.input_w", "battery.voltage_v"],
+        "ups": [],
+    },
+    "sources": [
+        {
+            "id": "mppt-usb",
+            "kind": "victron-vedirect",
+            "role": "main",
+            "reconnect_delay": 10,
+            "stale_after_s": 20,
+            "capabilities": {"solar_measured": True},
+            "port": "/dev/ttyUSB0",
+            "baud": 19200,
+        },
+        {
+            "id": "smartshunt",
+            "kind": "victron-smartshunt-ble",
+            "role": "main",
+            "reconnect_delay": 10,
+            "stale_after_s": 30,
+            "capabilities": {"battery_soc_measured": True},
+            "mac": "SET_IN_LOCAL_CONFIG",
+            "encryption_key": "SET_IN_LOCAL_CONFIG",
+        },
+    ],
+}
