@@ -157,8 +157,14 @@ export function createPowerController({ elements, state, getSettings }) {
   // compat alias
   const isSolixProfile = isBatteryProfile;
 
+  function usesSolixPassThroughSolarFallback(profileId) {
+    return profileId === "eco-orin" || profileId === "pi-rpi4";
+  }
+
   function normalizeHistoryPoints(windowPayload) {
     const source = windowPayload && Array.isArray(windowPayload.points) ? windowPayload.points : [];
+    const historyProfileId = String(state.powerHistory && state.powerHistory.deployment_profile ? state.powerHistory.deployment_profile : "").trim();
+    const shouldApplySolixFallback = usesSolixPassThroughSolarFallback(historyProfileId);
     return source
       .map((point) => {
         const ts = toFiniteNumber(point && point.ts);
@@ -167,7 +173,7 @@ export function createPowerController({ elements, state, getSettings }) {
         let chargeW = toFiniteNumber(point && point.charge_w);
         // At 100% SOC the Solix reports 0W input (charge controller off) but solar
         // is still powering the load via pass-through — treat charge as equal to load.
-        if (socPct !== null && socPct >= 100 && chargeW === 0 && loadW !== null) {
+        if (shouldApplySolixFallback && socPct !== null && socPct >= 100 && chargeW === 0 && loadW !== null) {
           chargeW = loadW;
         }
         return {

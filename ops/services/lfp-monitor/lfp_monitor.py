@@ -57,18 +57,33 @@ class JbdAdapterStuckError(Exception):
 # Config
 # ---------------------------------------------------------------------------
 
+
+def _env(*names, default=None):
+    """Return the first environment variable that is set among ``names``.
+
+    The generic battery-monitor knobs use the canonical ``BATT_*`` namespace. The
+    legacy ``SOLIX_*`` names are still honored as a fallback so already-deployed
+    systemd units and secrets files keep working until the box is re-bootstrapped.
+    """
+    for name in names:
+        val = os.environ.get(name)
+        if val is not None:
+            return val
+    return default
+
+
 JBD_ADDR            = os.environ.get("BLE_ADDR", "A5:C2:39:1A:5D:29")
 VICTRON_ADDR        = os.environ.get("VICTRON_BLE_ADDR", "CD:4C:1F:A1:BF:EF")
 VICTRON_KEY         = os.environ.get("VICTRON_ENCRYPTION_KEY", "")
-HOST                = os.environ.get("SOLIX_HOST", "127.0.0.1")
-PORT                = int(os.environ.get("SOLIX_PORT", "18082"))
-CSV_DIR             = Path(os.environ.get("SOLIX_CSV_DIR", str(SCRIPT_DIR / "logs")))
-CSV_INTERVAL        = float(os.environ.get("SOLIX_CSV_INTERVAL", "60"))
-CAPACITY_WH         = float(os.environ.get("SOLIX_CAPACITY_WH", "1280"))
+HOST                = _env("BATT_HOST", "SOLIX_HOST", default="127.0.0.1")
+PORT                = int(_env("BATT_PORT", "SOLIX_PORT", default="18082"))
+CSV_DIR             = Path(_env("BATT_CSV_DIR", "SOLIX_CSV_DIR", default=str(SCRIPT_DIR / "logs")))
+CSV_INTERVAL        = float(_env("BATT_CSV_INTERVAL", "SOLIX_CSV_INTERVAL", default="60"))
+CAPACITY_WH         = float(_env("BATT_CAPACITY_WH", "SOLIX_CAPACITY_WH", default="1280"))
 NOMINAL_AH          = float(os.environ.get("LFP_NOMINAL_AH", "100"))
-RECONNECT_DELAY     = float(os.environ.get("SOLIX_RECONNECT_DELAY", "10"))
-SCAN_TIMEOUT        = max(2.0, float(os.environ.get("SOLIX_SCAN_TIMEOUT", "10")))
-HISTORY_DB_PATH     = os.environ.get("SOLIX_HISTORY_DB_PATH", "").strip()
+RECONNECT_DELAY     = float(_env("BATT_RECONNECT_DELAY", "SOLIX_RECONNECT_DELAY", default="10"))
+SCAN_TIMEOUT        = max(2.0, float(_env("BATT_SCAN_TIMEOUT", "SOLIX_SCAN_TIMEOUT", default="10")))
+HISTORY_DB_PATH     = _env("BATT_HISTORY_DB_PATH", "SOLIX_HISTORY_DB_PATH", default="").strip()
 VICTRON_ADV_TIMEOUT    = float(os.environ.get("VICTRON_ADV_TIMEOUT", "30"))
 JBD_POLL_INTERVAL      = max(5.0, float(os.environ.get("BATTERY_JBD_POLL_INTERVAL", "60")))
 # After this many consecutive JBD GATT failures (connect succeeds but no notification),
@@ -352,7 +367,22 @@ def update_state_jbd(parsed: dict, raw: bytes):
         with STATE_LOCK:
             _load_w = STATE.get("load_w")
             _solar_w = STATE.get("solar_input_w")
-            _charge_w = max(0.0, (parsed["net_current_ma"] / 1000.0) * (parsed["voltage_mv"] / 1000.0))
+            _victron_battery_voltage_v = STATE.get("victron_battery_voltage_v")
+            _victron_battery_charging_current_a = STATE.get("victron_battery_charging_current_a")
+            _victron_battery_power_w = None
+            if _victron_battery_voltage_v is not None and _victron_battery_charging_current_a is not None:
+                _victron_battery_power_w = round(
+                    _victron_battery_voltage_v * _victron_battery_charging_current_a,
+                    3,
+                )
+            _jbd_power_w = (parsed["net_current_ma"] / 1000.0) * (parsed["voltage_mv"] / 1000.0)
+            _charge_w = max(0.0, _victron_battery_power_w if _victron_battery_power_w is not None else _jbd_power_w)
+            _victron_model_name = STATE.get("victron_model_name")
+            _victron_charge_state = STATE.get("victron_charge_state")
+            _victron_charger_error = STATE.get("victron_charger_error")
+            _victron_external_device_load_a = STATE.get("victron_external_device_load_a")
+            _victron_yield_today_wh = STATE.get("yield_today_wh")
+            _victron_manufacturer_id = STATE.get("victron_manufacturer_id")
         try:
             HISTORY_DB.record_battery_event(
                 reading_ts=now,
@@ -362,6 +392,15 @@ def update_state_jbd(parsed: dict, raw: bytes):
                 solar_input_w=_solar_w,
                 voltage_mv=parsed["voltage_mv"],
                 temp_c=parsed["temp_c"],
+                victron_model_name=_victron_model_name,
+                victron_charge_state=_victron_charge_state,
+                victron_charger_error=_victron_charger_error,
+                victron_battery_voltage_v=_victron_battery_voltage_v,
+                victron_battery_charging_current_a=_victron_battery_charging_current_a,
+                victron_battery_power_w=_victron_battery_power_w,
+                victron_external_device_load_a=_victron_external_device_load_a,
+                victron_yield_today_wh=_victron_yield_today_wh,
+                victron_manufacturer_id=_victron_manufacturer_id,
             )
         except Exception as err:
             log.warning("history sqlite write failed: %s", err)
@@ -424,6 +463,12 @@ async def jbd_query_once(client: BleakClient, cmd: int, timeout: float = 8.0) ->
 # ---------------------------------------------------------------------------
 
 def update_state_victron(reading_ts: float, parsed: dict, manufacturer_id: int, load_w):
+    battery_voltage_v = parsed.get("battery_voltage_v")
+    battery_current_a = parsed.get("battery_charging_current_a")
+    battery_power_w = None
+    if battery_voltage_v is not None and battery_current_a is not None:
+        battery_power_w = round(battery_voltage_v * battery_current_a, 3)
+
     with STATE_LOCK:
         STATE["timestamp"] = reading_ts
         STATE["victron_reading_ts"] = reading_ts
@@ -440,6 +485,27 @@ def update_state_victron(reading_ts: float, parsed: dict, manufacturer_id: int, 
         STATE["victron_manufacturer_id"] = manufacturer_id
         STATE["ble_connected_victron"] = True
         STATE["last_error_victron"] = ""
+
+    if HISTORY_DB is not None:
+        try:
+            HISTORY_DB.record_victron_event(
+                ts=reading_ts,
+                load_w=load_w,
+                charge_w=max(0.0, battery_power_w) if battery_power_w is not None else None,
+                solar_input_w=parsed.get("solar_power_w"),
+                voltage_mv=round(battery_voltage_v * 1000.0, 3) if battery_voltage_v is not None else None,
+                victron_model_name=parsed.get("model_name"),
+                victron_charge_state=parsed.get("charge_state"),
+                victron_charger_error=parsed.get("charger_error"),
+                victron_battery_voltage_v=battery_voltage_v,
+                victron_battery_charging_current_a=battery_current_a,
+                victron_battery_power_w=battery_power_w,
+                victron_external_device_load_a=parsed.get("external_device_load_a"),
+                victron_yield_today_wh=parsed.get("yield_today_wh"),
+                victron_manufacturer_id=manufacturer_id,
+            )
+        except Exception as err:
+            log.warning("history sqlite Victron write failed: %s", err)
 
 
 async def jbd_loop(connect_lock: asyncio.Lock, jbd_queue: asyncio.Queue, scanner: BleakScanner):

@@ -85,17 +85,22 @@ VICTRON_ENCRYPTION_KEY=<hex key from VictronConnect → Product info → Encrypt
 
 | Var | Default |
 |-----|---------|
-| `BLE_ADDR` | `A5:C2:39:1A:5D:29` |
+| `BATTERY_MONITOR_BLE_ADDR` / `BLE_ADDR` | `A5:C2:39:1A:5D:29` |
 | `VICTRON_BLE_ADDR` | `CD:4C:1F:A1:BF:EF` |
 | `VICTRON_ENCRYPTION_KEY` | *(required)* |
-| `SOLIX_HOST` | `127.0.0.1` |
-| `SOLIX_PORT` | `18082` |
-| `SOLIX_CAPACITY_WH` | `1200` |
+| `BATT_HOST` | `127.0.0.1` |
+| `BATT_PORT` | `18082` |
+| `BATT_CAPACITY_WH` | `1280` |
 | `LFP_NOMINAL_AH` | `100` |
-| `SOLIX_CSV_DIR` | `./logs` |
-| `SOLIX_CSV_INTERVAL` | `60` |
-| `SOLIX_RECONNECT_DELAY` | `10` |
+| `BATT_CSV_DIR` | `./logs` |
+| `BATT_CSV_INTERVAL` | `60` |
+| `BATT_RECONNECT_DELAY` | `10` |
 | `BATTERY_JBD_POLL_INTERVAL` | `60` |
+
+The generic battery-monitor knobs use the canonical `BATT_*` namespace. The legacy
+`SOLIX_*` spellings (`SOLIX_HOST`, `SOLIX_PORT`, `SOLIX_CAPACITY_WH`, `SOLIX_CSV_DIR`,
+`SOLIX_CSV_INTERVAL`, `SOLIX_RECONNECT_DELAY`, `SOLIX_HISTORY_DB_PATH`) are still honored
+as a fallback so already-deployed units keep working until re-bootstrapped.
 
 ## BLE Architecture
 
@@ -165,6 +170,13 @@ stuck state after rapid service restarts or after being held in a connection too
   - `model_name`, `charge_state`, `charger_error`, `battery_voltage_v`,
     `battery_charging_current_a`, `yield_today_wh`, `solar_power_w`,
     `external_device_load_a`, and derived `load_w`
+- SQLite history persists the latest Victron snapshot alongside each JBD history sample:
+  - `victron_model_name`, `victron_charge_state`, `victron_charger_error`,
+    `victron_battery_voltage_v`, `victron_battery_charging_current_a`,
+    signed `victron_battery_power_w`, `victron_external_device_load_a`,
+    `victron_yield_today_wh`, and `victron_manufacturer_id`
+  - Historical Victron backfill must use actual `victron-adv-YYYY-MM-DD.csv` rows only.
+    Do not interpolate missing current, voltage, solar, or load values.
 - Every successful JBD read appends a raw packet log to `jbd-basic-YYYY-MM-DD.csv`:
   - full raw packet hex, decoded core values, every payload byte in `b00...` columns
   - this is the best local forensic record short of a live `btmon` capture

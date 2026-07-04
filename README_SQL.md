@@ -68,6 +68,11 @@ Tables:
 - `battery_events` (migrated from `solix_events` — auto-renamed on first connect)
   - primary key: `reading_ts_ms`
   - stores `ts`, `load_w`, `charge_w`, `soc_pct`, plus extra battery fields
+  - on LFP/Victron deployments, also stores Victron fields:
+    `victron_model_name`, `victron_charge_state`, `victron_charger_error`,
+    `victron_battery_voltage_v`, `victron_battery_charging_current_a`,
+    signed `victron_battery_power_w`, `victron_external_device_load_a`,
+    `victron_yield_today_wh`, and `victron_manufacturer_id`
 - `vllm_samples`
   - primary key: `sample_ts_ms`
   - stores `ts`, `requests_running`, `requests_waiting`, `requests_completed`
@@ -92,6 +97,9 @@ Deployment/bootstrap/config:
 Utility script:
 
 - `ops/scripts/import_history_csv_to_sqlite.py`
+  - can import `victron-adv-YYYY-MM-DD.csv` rows with `--victron-log-dir`
+  - Victron backfill is discrete-only: it writes actual advertisement timestamps and
+    does not interpolate missing current, voltage, load, or solar samples
 
 ## Behavior Of The New Code
 

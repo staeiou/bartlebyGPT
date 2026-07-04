@@ -6,6 +6,23 @@ from pathlib import Path
 from statistics import median
 
 
+def _env_flag(name, default=False):
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Capability: solar/PV is measured by a dedicated sensor independent of battery charge
+# current (see power_telemetry.BATTERY_SOLAR_MEASURED). When true, prefer the dedicated
+# solar_input_w column over charge_w for the solar series. Legacy deployments keyed this
+# off DEPLOYMENT_PROFILE == "jetson-solar-lfp"; that fallback default preserves them.
+BATTERY_SOLAR_MEASURED = _env_flag(
+    "BATTERY_SOLAR_MEASURED",
+    default=(os.environ.get("DEPLOYMENT_PROFILE", "").strip() == "jetson-solar-lfp"),
+)
+
+
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS battery_events (
     reading_ts_ms INTEGER PRIMARY KEY,
@@ -16,7 +33,16 @@ CREATE TABLE IF NOT EXISTS battery_events (
     solar_input_w REAL,
     voltage_mv REAL,
     temp_c REAL,
-    charging_status INTEGER
+    charging_status INTEGER,
+    victron_model_name TEXT,
+    victron_charge_state TEXT,
+    victron_charger_error TEXT,
+    victron_battery_voltage_v REAL,
+    victron_battery_charging_current_a REAL,
+    victron_battery_power_w REAL,
+    victron_external_device_load_a REAL,
+    victron_yield_today_wh REAL,
+    victron_manufacturer_id INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_battery_events_ts ON battery_events(ts);
@@ -48,6 +74,54 @@ def _median_or_none(values, digits=None):
     if digits is None:
         return value
     return round(value, digits)
+
+
+MAX_HISTORY_WATTS = 1000.0
+
+
+def _row_value(row, key):
+    if hasattr(row, "get"):
+        return row.get(key)
+    try:
+        return row[key]
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
+def _is_plausible_battery_history_row(row):
+    for key in ("load_w", "charge_w"):
+        value = _row_value(row, key)
+        if value is None:
+            continue
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return False
+        if not math.isfinite(numeric) or numeric < 0.0 or numeric > MAX_HISTORY_WATTS:
+            return False
+    return True
+
+
+BATTERY_EVENT_COLUMNS = {
+    "reading_ts_ms": "INTEGER PRIMARY KEY",
+    "ts": "REAL NOT NULL",
+    "load_w": "REAL",
+    "charge_w": "REAL",
+    "soc_pct": "REAL",
+    "solar_input_w": "REAL",
+    "voltage_mv": "REAL",
+    "temp_c": "REAL",
+    "charging_status": "INTEGER",
+    "victron_model_name": "TEXT",
+    "victron_charge_state": "TEXT",
+    "victron_charger_error": "TEXT",
+    "victron_battery_voltage_v": "REAL",
+    "victron_battery_charging_current_a": "REAL",
+    "victron_battery_power_w": "REAL",
+    "victron_external_device_load_a": "REAL",
+    "victron_yield_today_wh": "REAL",
+    "victron_manufacturer_id": "INTEGER",
+}
 
 
 def align_window_end(now_ts, bin_seconds):
@@ -173,7 +247,18 @@ class SQLiteHistoryStore:
             if "solix_events" in tables and "battery_events" not in tables:
                 conn.execute("ALTER TABLE solix_events RENAME TO battery_events")
             conn.executescript(SCHEMA_SQL)
+            self._ensure_columns(conn, "battery_events", BATTERY_EVENT_COLUMNS)
         self._ensure_shared_permissions()
+
+    def _ensure_columns(self, conn, table_name, columns):
+        existing = {
+            row["name"]
+            for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        }
+        for name, definition in columns.items():
+            if name in existing:
+                continue
+            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {name} {definition}")
 
     def record_battery_event(
         self,
@@ -186,6 +271,15 @@ class SQLiteHistoryStore:
         voltage_mv=None,
         temp_c=None,
         charging_status=None,
+        victron_model_name=None,
+        victron_charge_state=None,
+        victron_charger_error=None,
+        victron_battery_voltage_v=None,
+        victron_battery_charging_current_a=None,
+        victron_battery_power_w=None,
+        victron_external_device_load_a=None,
+        victron_yield_today_wh=None,
+        victron_manufacturer_id=None,
     ):
         reading_ts = float(reading_ts)
         with self._connect() as conn:
@@ -200,8 +294,17 @@ class SQLiteHistoryStore:
                     solar_input_w,
                     voltage_mv,
                     temp_c,
-                    charging_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    charging_status,
+                    victron_model_name,
+                    victron_charge_state,
+                    victron_charger_error,
+                    victron_battery_voltage_v,
+                    victron_battery_charging_current_a,
+                    victron_battery_power_w,
+                    victron_external_device_load_a,
+                    victron_yield_today_wh,
+                    victron_manufacturer_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     _to_millis(reading_ts),
@@ -213,6 +316,15 @@ class SQLiteHistoryStore:
                     voltage_mv,
                     temp_c,
                     charging_status,
+                    victron_model_name,
+                    victron_charge_state,
+                    victron_charger_error,
+                    victron_battery_voltage_v,
+                    victron_battery_charging_current_a,
+                    victron_battery_power_w,
+                    victron_external_device_load_a,
+                    victron_yield_today_wh,
+                    victron_manufacturer_id,
                 ),
             )
         self._ensure_shared_permissions()
@@ -268,10 +380,19 @@ class SQLiteHistoryStore:
                 row.get("load_w"),
                 row.get("charge_w"),
                 row.get("soc_pct"),
-                None,
-                None,
-                None,
-                None,
+                row.get("solar_input_w"),
+                row.get("voltage_mv"),
+                row.get("temp_c"),
+                row.get("charging_status"),
+                row.get("victron_model_name"),
+                row.get("victron_charge_state"),
+                row.get("victron_charger_error"),
+                row.get("victron_battery_voltage_v"),
+                row.get("victron_battery_charging_current_a"),
+                row.get("victron_battery_power_w"),
+                row.get("victron_external_device_load_a"),
+                row.get("victron_yield_today_wh"),
+                row.get("victron_manufacturer_id"),
             )
             for row in rows
             if row.get("ts") is not None
@@ -290,8 +411,17 @@ class SQLiteHistoryStore:
                     solar_input_w,
                     voltage_mv,
                     temp_c,
-                    charging_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    charging_status,
+                    victron_model_name,
+                    victron_charge_state,
+                    victron_charger_error,
+                    victron_battery_voltage_v,
+                    victron_battery_charging_current_a,
+                    victron_battery_power_w,
+                    victron_external_device_load_a,
+                    victron_yield_today_wh,
+                    victron_manufacturer_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 payload,
             )
@@ -301,6 +431,76 @@ class SQLiteHistoryStore:
     # Backwards-compatible alias — remove once all callers are updated.
     def import_solix_rows(self, rows):
         return self.import_battery_rows(rows)
+
+    def import_victron_rows(self, rows):
+        payload = [
+            (
+                _to_millis(row["ts"]),
+                float(row["ts"]),
+                row.get("load_w"),
+                row.get("charge_w"),
+                row.get("solar_input_w"),
+                row.get("voltage_mv"),
+                row.get("charging_status"),
+                row.get("victron_model_name"),
+                row.get("victron_charge_state"),
+                row.get("victron_charger_error"),
+                row.get("victron_battery_voltage_v"),
+                row.get("victron_battery_charging_current_a"),
+                row.get("victron_battery_power_w"),
+                row.get("victron_external_device_load_a"),
+                row.get("victron_yield_today_wh"),
+                row.get("victron_manufacturer_id"),
+            )
+            for row in rows
+            if row.get("ts") is not None
+        ]
+        if not payload:
+            return 0
+        with self._connect() as conn:
+            conn.executemany(
+                """
+                INSERT INTO battery_events (
+                    reading_ts_ms,
+                    ts,
+                    load_w,
+                    charge_w,
+                    solar_input_w,
+                    voltage_mv,
+                    charging_status,
+                    victron_model_name,
+                    victron_charge_state,
+                    victron_charger_error,
+                    victron_battery_voltage_v,
+                    victron_battery_charging_current_a,
+                    victron_battery_power_w,
+                    victron_external_device_load_a,
+                    victron_yield_today_wh,
+                    victron_manufacturer_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(reading_ts_ms) DO UPDATE SET
+                    load_w=excluded.load_w,
+                    charge_w=excluded.charge_w,
+                    solar_input_w=excluded.solar_input_w,
+                    voltage_mv=excluded.voltage_mv,
+                    charging_status=excluded.charging_status,
+                    victron_model_name=excluded.victron_model_name,
+                    victron_charge_state=excluded.victron_charge_state,
+                    victron_charger_error=excluded.victron_charger_error,
+                    victron_battery_voltage_v=excluded.victron_battery_voltage_v,
+                    victron_battery_charging_current_a=excluded.victron_battery_charging_current_a,
+                    victron_battery_power_w=excluded.victron_battery_power_w,
+                    victron_external_device_load_a=excluded.victron_external_device_load_a,
+                    victron_yield_today_wh=excluded.victron_yield_today_wh,
+                    victron_manufacturer_id=excluded.victron_manufacturer_id
+                """,
+                payload,
+            )
+        self._ensure_shared_permissions()
+        return len(payload)
+
+    def record_victron_event(self, **kwargs):
+        return self.import_victron_rows([kwargs])
 
     def import_vllm_rows(self, rows):
         payload = [
@@ -334,15 +534,26 @@ class SQLiteHistoryStore:
 
     def fetch_battery_rows(self, start_ts, end_ts):
         with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT ts, load_w, charge_w, soc_pct
-                FROM battery_events
-                WHERE ts >= ? AND ts < ?
-                ORDER BY ts ASC
-                """,
-                (float(start_ts), float(end_ts)),
-            ).fetchall()
+            if BATTERY_SOLAR_MEASURED:
+                rows = conn.execute(
+                    """
+                    SELECT ts, load_w, COALESCE(solar_input_w, charge_w) AS charge_w, soc_pct
+                    FROM battery_events
+                    WHERE ts >= ? AND ts < ?
+                    ORDER BY ts ASC
+                    """,
+                    (float(start_ts), float(end_ts)),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT ts, load_w, charge_w, soc_pct
+                    FROM battery_events
+                    WHERE ts >= ? AND ts < ?
+                    ORDER BY ts ASC
+                    """,
+                    (float(start_ts), float(end_ts)),
+                ).fetchall()
         return [
             {
                 "ts": float(row["ts"]),
@@ -351,6 +562,7 @@ class SQLiteHistoryStore:
                 "soc_pct": row["soc_pct"],
             }
             for row in rows
+            if _is_plausible_battery_history_row(row)
         ]
 
     # Backwards-compatible alias — remove once all callers are updated.
@@ -394,6 +606,7 @@ class SQLiteHistoryStore:
             "generated_at_ts": int(now_ts),
             "generated_at_iso": _utc_iso(now_ts),
             "lookback_days": int(lookback_days),
+            "deployment_profile": os.environ.get("DEPLOYMENT_PROFILE", "").strip() or None,
             "source": "sqlite_history",
             "bin_statistic": "median",
             "rows_considered": len(battery_rows) + len(vllm_rows),

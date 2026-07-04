@@ -43,6 +43,19 @@ def env_bool(name, default=False):
     return default
 
 
+def env_first(*names, default=None):
+    """First set env var among ``names``.
+
+    Used for the battery-feed knobs whose canonical contract is TELEMETRY_BATTERY_*;
+    the legacy TELEMETRY_SOLIX_* spellings are passed as fallbacks.
+    """
+    for name in names:
+        val = os.environ.get(name)
+        if val is not None:
+            return val
+    return default
+
+
 HOST = os.environ.get("TELEMETRY_HOST", "127.0.0.1")
 PORT = int(os.environ.get("TELEMETRY_PORT", "18081"))
 SAMPLE_INTERVAL = float(os.environ.get("TELEMETRY_SAMPLE_INTERVAL", "1.0"))
@@ -53,19 +66,37 @@ REQUEST_TIMEOUT = float(os.environ.get("TELEMETRY_REQUEST_TIMEOUT", "1.5"))
 ESPHOME_POWER_URL = os.environ.get("TELEMETRY_ESPHOME_POWER_URL", "").strip()
 ESPHOME_BASE_URL = os.environ.get("TELEMETRY_ESPHOME_BASE_URL", "").strip().rstrip("/")
 ESPHOME_POWER_PATH = os.environ.get("TELEMETRY_ESPHOME_POWER_PATH", "/sensor/power").strip()
-SOLIX_STALE_SECONDS = max(0.0, float(os.environ.get("TELEMETRY_SOLIX_STALE_SECONDS", "90")))
-SOLIX_AUTO_RECOVER = env_bool("TELEMETRY_SOLIX_AUTO_RECOVER", default=True)
-SOLIX_RECOVERY_COOLDOWN_SECONDS = max(
-    30.0, float(os.environ.get("TELEMETRY_SOLIX_RECOVERY_COOLDOWN_SECONDS", "180"))
+# Battery-feed staleness / auto-recovery knobs. Canonical contract is TELEMETRY_BATTERY_*;
+# legacy TELEMETRY_SOLIX_* spellings are still honored. Internal identifiers keep the
+# SOLIX_ prefix to avoid churn; they are not part of the operator-facing contract.
+SOLIX_STALE_SECONDS = max(0.0, float(env_first(
+    "TELEMETRY_BATTERY_STALE_SECONDS", "TELEMETRY_SOLIX_STALE_SECONDS", default="90")))
+SOLIX_AUTO_RECOVER = env_bool(
+    "TELEMETRY_BATTERY_AUTO_RECOVER",
+    default=env_bool("TELEMETRY_SOLIX_AUTO_RECOVER", default=True),
 )
-SOLIX_RECOVERY_ESCALATE_EVERY = max(
-    1, int(os.environ.get("TELEMETRY_SOLIX_RECOVERY_ESCALATE_EVERY", "2"))
-)
+SOLIX_RECOVERY_COOLDOWN_SECONDS = max(30.0, float(env_first(
+    "TELEMETRY_BATTERY_RECOVERY_COOLDOWN_SECONDS",
+    "TELEMETRY_SOLIX_RECOVERY_COOLDOWN_SECONDS", default="180")))
+SOLIX_RECOVERY_ESCALATE_EVERY = max(1, int(env_first(
+    "TELEMETRY_BATTERY_RECOVERY_ESCALATE_EVERY",
+    "TELEMETRY_SOLIX_RECOVERY_ESCALATE_EVERY", default="2")))
 BATTERY_MONITOR_SERVICE_NAME = os.environ.get("BATTERY_MONITOR_SERVICE_NAME", "solix-monitor").strip()
-SOLIX_LOG_DIR = os.environ.get("TELEMETRY_SOLIX_LOG_DIR", "/opt/bartleby/solix-monitor/logs").strip()
+SOLIX_LOG_DIR = env_first(
+    "TELEMETRY_BATTERY_LOG_DIR", "TELEMETRY_SOLIX_LOG_DIR",
+    default="/opt/bartleby/solix-monitor/logs").strip()
 BATTERY_CSV_DIR = os.environ.get("TELEMETRY_BATTERY_CSV_DIR", SOLIX_LOG_DIR).strip()
 BATTERY_CSV_PREFIX = os.environ.get("TELEMETRY_BATTERY_CSV_PREFIX", "solix").strip().rstrip("-")
 DEPLOYMENT_PROFILE = os.environ.get("DEPLOYMENT_PROFILE", "").strip()
+# Capability flag: solar/PV is measured by a dedicated sensor that is independent of
+# battery charge current (e.g. a Victron SmartSolar MPPT). When true, the Solix-style
+# "0W input at 100% SoC means solar pass-through" fallback must NOT be applied, and the
+# history store prefers the dedicated solar_input_w column. Legacy deployments keyed this
+# behavior off the profile *name*; that fallback default preserves their behavior.
+BATTERY_SOLAR_MEASURED = env_bool(
+    "BATTERY_SOLAR_MEASURED",
+    default=(DEPLOYMENT_PROFILE == "jetson-solar-lfp"),
+)
 BATTERY_CAPACITY_WH = float(os.environ.get("BATTERY_CAPACITY_WH", "0"))
 VLLM_LOG_DIR = os.environ.get("TELEMETRY_VLLM_LOG_DIR", "").strip()
 HISTORY_DB_PATH = os.environ.get("TELEMETRY_HISTORY_DB_PATH", "").strip()
@@ -92,6 +123,7 @@ GPU_COOLING_MULTIPLIER = float(
 )
 CLAMP_MIN_WATTS = float(os.environ.get("TELEMETRY_CLAMP_MIN_WATTS", "0"))
 CLAMP_MAX_WATTS = float(os.environ.get("TELEMETRY_CLAMP_MAX_WATTS", "0"))  # 0 = disabled
+MAX_HISTORY_WATTS = 1000.0
 
 
 RUNNING_RE = re.compile(r"^vllm:num_requests_running\{.*\}\s+([0-9.eE+-]+)$", re.MULTILINE)
@@ -520,6 +552,20 @@ def read_solix_rows(now_ts):
     return read_battery_csv_rows(now_ts)
 
 
+def _is_plausible_history_row(row):
+    for key in ("load_w", "charge_w"):
+        value = row.get(key)
+        if value is None:
+            continue
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return False
+        if not math.isfinite(numeric) or numeric < 0.0 or numeric > MAX_HISTORY_WATTS:
+            return False
+    return True
+
+
 def build_binned_window(rows, start_ts, end_ts, bin_seconds, vllm_rows=None):
     if end_ts <= start_ts:
         return {
@@ -550,6 +596,8 @@ def build_binned_window(rows, start_ts, end_ts, bin_seconds, vllm_rows=None):
     for row in rows:
         ts = row.get("ts")
         if ts is None or ts < start_ts or ts > end_ts:
+            continue
+        if not _is_plausible_history_row(row):
             continue
         idx = int((ts - start_ts) // bin_seconds)
         if idx < 0:
@@ -654,7 +702,7 @@ def compute_history_payload(now_ts=None):
             bin_24h_seconds=HISTORY_24H_BIN_SECONDS,
             bin_7d_seconds=HISTORY_7D_BIN_SECONDS,
         )
-        if int(payload.get("solix_rows_considered") or 0) > 0:
+        if int(payload.get("battery_rows_considered") or payload.get("solix_rows_considered") or 0) > 0:
             payload["cache_ttl_seconds"] = int(HISTORY_CACHE_TTL_SECONDS)
             return payload
 
@@ -681,6 +729,7 @@ def compute_history_payload(now_ts=None):
         "generated_at_iso": datetime.fromtimestamp(now_ts, tz=timezone.utc).isoformat(),
         "cache_ttl_seconds": int(HISTORY_CACHE_TTL_SECONDS),
         "lookback_days": HISTORY_LOOKBACK_DAYS,
+        "deployment_profile": DEPLOYMENT_PROFILE or None,
         "source": "solix_csv",
         "bin_statistic": "mean",
         "rows_considered": len(rows),
@@ -911,12 +960,24 @@ def sample_once():
             if k in next_state:
                 current[k] = next_state[k]
 
-        # At 100% SOC some charge controllers report 0W solar input (charge stopped)
-        # but solar is still powering the load via pass-through. Effective solar = load.
+        # Solix-style batteries can report 0W input while solar pass-through still
+        # powers the load. Do not apply that compatibility fallback to the Victron
+        # LFP deployment; SmartSolar reports real PV power separately.
         _soc = current.get("battery_soc_pct") or current.get("solix_soc_pct")
         _solar = current.get("battery_solar_input_w") or current.get("solix_solar_input_w")
         _load = current.get("estimated_total_watts")
-        _effective = _load if (_soc is not None and _soc >= 100 and _solar == 0 and _load is not None) else _solar
+        _allow_pass_through_fallback = not BATTERY_SOLAR_MEASURED
+        _effective = (
+            _load
+            if (
+                _allow_pass_through_fallback
+                and _soc is not None
+                and _soc >= 100
+                and _solar == 0
+                and _load is not None
+            )
+            else _solar
+        )
         current["battery_effective_solar_w"] = _effective
         current["solix_effective_solar_w"] = _effective
 
