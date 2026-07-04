@@ -1,4 +1,6 @@
 *HANDOFF*.md
+__pycache__/
+*.pyc
 ops/config/modules-load.d/
 *.secrets.env
 *secrets*.env
