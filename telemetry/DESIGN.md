@@ -101,6 +101,7 @@ Implemented:
 - source-aware channel resolution
 - simulated driver
 - VE.Direct driver
+- Victron SmartShunt BLE driver
 - INA219 driver
 - pure-data recipes for Solix, Victron MPPT + JBD, Victron MPPT + SmartShunt,
   VE.Direct MPPT + SmartShunt, and simulated transition testing
@@ -108,8 +109,8 @@ Implemented:
 Not implemented yet:
 
 - history writer
-- BLE source drivers (placeholder classes validate config and declare channels,
-  but raise if run)
+- Solix, Victron MPPT BLE, and JBD BLE source drivers (placeholder classes
+  validate config and declare channels, but raise if run)
 - vLLM/load source driver
 - nginx/systemd cutover
 - frontend capability-driven rendering

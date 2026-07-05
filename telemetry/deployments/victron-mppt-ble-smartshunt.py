@@ -31,9 +31,10 @@ CONFIG = {
             "reconnect_delay": 10,
             "stale_after_s": 30,
             "capabilities": {"battery_soc_measured": True},
-            "mac": "SET_IN_LOCAL_CONFIG",
-            "encryption_key": "SET_IN_LOCAL_CONFIG",
+            "mac_env": "VICTRON_SMARTSHUNT_BLE_ADDR",
+            "encryption_key_env": "VICTRON_SMARTSHUNT_ENCRYPTION_KEY",
+            "nominal_ah": 100,
+            "advertisement_timeout": 30,
         },
     ],
 }
-

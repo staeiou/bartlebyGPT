@@ -5,9 +5,10 @@ import unittest
 from pathlib import Path
 
 from telemetry.core.deployment import power_source_mode
-from telemetry.core.http import build_payload
+from telemetry.core.http import build_payload, build_sensor_power_payload
 from telemetry.core.reading import Reading, Snapshot
 from telemetry.core.registry import ConfigError, deployment_from_config, load_deployment
+from telemetry.drivers.victron_vedirect import VeDirectDriver
 
 
 class TelemetryConfigTests(unittest.TestCase):
@@ -64,6 +65,36 @@ class TelemetryConfigTests(unittest.TestCase):
         self.assertEqual(payload["capabilities"]["power_source_mode"], "ups")
         self.assertIn("ups.soc_pct", payload["channels"])
         self.assertEqual(payload["channels"]["ups.soc_pct"]["source_id"], "ups_sim")
+
+    def test_sensor_power_payload_preserves_legacy_contract(self):
+        deployment = load_deployment("telemetry/deployments/sim-demo.py")
+        snapshot = Snapshot()
+        now = time.time()
+        snapshot.update(Reading("load.w", 12, now, "main_sim"))
+        snapshot.update(Reading("solar.input_w", 40, now, "main_sim"))
+        snapshot.update(Reading("battery.soc_pct", 87, now, "main_sim"))
+        snapshot.update(Reading("battery.voltage_v", 12.8, now, "main_sim"))
+        snapshot.update(Reading("battery.current_a", -0.9, now, "main_sim"))
+        payload = build_sensor_power_payload(deployment, snapshot, now=now)
+        self.assertEqual(payload["value"], 12)
+        self.assertEqual(payload["battery_soc_pct"], 87)
+        self.assertEqual(payload["battery_solar_input_w"], 40)
+        self.assertEqual(payload["battery_voltage_mv"], 12800.0)
+        self.assertEqual(payload["battery_net_current_ma"], -900.0)
+        self.assertEqual(payload["solix_soc_pct"], 87)
+        self.assertEqual(payload["victron_reading_ts"], now)
+
+    def test_vedirect_emits_load_w_from_voltage_and_load_current(self):
+        emitted = []
+
+        class Ctx:
+            emit = emitted.append
+
+        driver = VeDirectDriver(port="/dev/null", baud=19200)
+        driver._emit(Ctx(), {"V": "12800", "IL": "750"})
+        by_channel = {reading.channel: reading.value for reading in emitted}
+        self.assertEqual(by_channel["load.current_a"], 0.75)
+        self.assertEqual(by_channel["load.w"], 9.6)
 
 
 if __name__ == "__main__":

@@ -9,10 +9,10 @@ from ..drivers.ble_placeholders import (
     JbdBmsBleDriver,
     SolixC300xBleDriver,
     VictronMpptBleDriver,
-    VictronSmartShuntBleDriver,
 )
 from ..drivers.ina219 import Ina219Driver
 from ..drivers.simulated import SimulatedDriver
+from ..drivers.victron_smartshunt_ble import VictronSmartShuntBleDriver
 from ..drivers.victron_vedirect import VeDirectDriver
 
 

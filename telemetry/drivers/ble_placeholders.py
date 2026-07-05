@@ -67,21 +67,6 @@ class VictronMpptBleDriver(_PendingBleDriver):
         return cls(_require_exact(cls.kind, config, {"mac", "encryption_key"}))
 
 
-class VictronSmartShuntBleDriver(_PendingBleDriver):
-    kind = "victron-smartshunt-ble"
-    channels = (
-        BATTERY_SOC_PCT,
-        BATTERY_VOLTAGE_V,
-        BATTERY_CURRENT_A,
-        BATTERY_REMAINING_AH,
-        BATTERY_NOMINAL_AH,
-    )
-
-    @classmethod
-    def from_config(cls, config: dict[str, Any]) -> "VictronSmartShuntBleDriver":
-        return cls(_require_exact(cls.kind, config, {"mac", "encryption_key"}))
-
-
 class JbdBmsBleDriver(_PendingBleDriver):
     kind = "jbd-bms-ble"
     channels = (
@@ -96,4 +81,3 @@ class JbdBmsBleDriver(_PendingBleDriver):
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> "JbdBmsBleDriver":
         return cls(_require_exact(cls.kind, config, {"mac", "poll_interval"}))
-
