@@ -54,6 +54,7 @@ def build_sensor_power_payload(deployment, snapshot, now: float | None = None) -
     if load_w is None:
         load_w = _value(channels, "wall.total_w")
     solar_w = _value(channels, "solar.input_w")
+    charge_w = _value(channels, "battery.charge_w")
     soc = _value(channels, "battery.soc_pct")
     voltage_v = _value(channels, "battery.voltage_v")
     current_a = _value(channels, "battery.current_a")
@@ -70,7 +71,7 @@ def build_sensor_power_payload(deployment, snapshot, now: float | None = None) -
         "last_error": "",
         "battery_soc_pct": soc,
         "battery_solar_input_w": solar_w,
-        "battery_total_input_w": solar_w,
+        "battery_total_input_w": charge_w,
         "battery_voltage_mv": voltage_mv,
         "battery_temp_c": temp_c,
         "battery_reading_ts": battery_ts,
@@ -85,7 +86,7 @@ def build_sensor_power_payload(deployment, snapshot, now: float | None = None) -
         "deployment_profile": deployment.id,
         "solix_soc_pct": soc,
         "solix_solar_input_w": solar_w,
-        "solix_total_input_w": solar_w,
+        "solix_total_input_w": charge_w,
         "solix_voltage_mv": voltage_mv,
         "solix_temp_c": temp_c,
         "solix_reading_ts": battery_ts,

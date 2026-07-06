@@ -32,6 +32,7 @@ def all_channels() -> dict[str, Channel]:
 BATTERY_SOC_PCT = register("battery.soc_pct", "%", "State of charge", "battery")
 BATTERY_VOLTAGE_V = register("battery.voltage_v", "V", "Battery voltage", "battery")
 BATTERY_CURRENT_A = register("battery.current_a", "A", "Battery current", "battery")
+BATTERY_CHARGE_W = register("battery.charge_w", "W", "Battery charge power", "battery")
 BATTERY_REMAINING_AH = register("battery.remaining_ah", "Ah", "Remaining Ah", "battery")
 BATTERY_NOMINAL_AH = register("battery.nominal_ah", "Ah", "Nominal Ah", "battery")
 BATTERY_TEMP_C = register("battery.temp_c", "degC", "Battery temp", "battery")

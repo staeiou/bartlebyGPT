@@ -5,6 +5,7 @@ import time
 from typing import Any
 
 from ..core.channels import (
+    BATTERY_CHARGE_W,
     BATTERY_CURRENT_A,
     BATTERY_VOLTAGE_V,
     CHARGE_STATE,
@@ -32,6 +33,7 @@ class VeDirectDriver:
     channels = (
         BATTERY_VOLTAGE_V,
         BATTERY_CURRENT_A,
+        BATTERY_CHARGE_W,
         SOLAR_INPUT_W,
         SOLAR_VOLTAGE_V,
         LOAD_CURRENT_A,
@@ -96,7 +98,11 @@ class VeDirectDriver:
             if raw is not None:
                 ctx.emit(Reading(channel, raw / divisor, now))
         battery_mv = num("V")
+        battery_ma = num("I")
         load_ma = num("IL")
+        if battery_mv is not None and battery_ma is not None:
+            battery_w = (battery_mv / 1000.0) * (battery_ma / 1000.0)
+            ctx.emit(Reading(BATTERY_CHARGE_W, round(max(0.0, battery_w), 1), now))
         if battery_mv is not None and load_ma is not None:
             ctx.emit(Reading(LOAD_W, round((battery_mv / 1000.0) * (load_ma / 1000.0), 1), now))
         charge_state = num("CS")

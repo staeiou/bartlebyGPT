@@ -5,6 +5,7 @@ import logging
 import signal
 
 from .deployment import Deployment, SourceContext
+from .history import battery_history_loop
 from .http import make_server
 from .reading import Snapshot
 
@@ -39,6 +40,7 @@ async def run(deployment: Deployment) -> None:
     )
 
     tasks = [asyncio.create_task(supervise(source, ctx), name=f"source:{source.id}") for source in deployment.sources]
+    tasks.append(asyncio.create_task(battery_history_loop(deployment, snapshot, log), name="battery-history"))
     stop = asyncio.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         try:
