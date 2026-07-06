@@ -269,11 +269,18 @@ install_battery_monitor() {
   local monitor_user
   monitor_user="$(choose_battery_monitor_user)"
 
+  # BATTERY_MONITOR_RUNTIME:
+  #   script    - copy and run one legacy monitor script from /opt
+  #   telemetry - copy the telemetry package and run a deployment config from /opt
+  local monitor_runtime="${BATTERY_MONITOR_RUNTIME:-script}"
+
   # BATTERY_MONITOR_SCRIPT: path to the monitor script in the repo.
-  # Defaults to solix_monitor.py for backwards compatibility.
+  # Defaults to solix_monitor.py for backwards compatibility in script mode.
   local monitor_src="${BATTERY_MONITOR_SCRIPT:-${OPS_DIR}/services/solix-monitor/solix_monitor.py}"
   local monitor_script_name
   monitor_script_name="$(basename "${monitor_src}")"
+  local telemetry_deployment_src="${BATTERY_MONITOR_DEPLOYMENT:-}"
+  local telemetry_deployment_name=""
 
   # Canonical BATT_* battery-monitor knobs; legacy SOLIX_* names are still honored
   # as a fallback so existing profiles/secrets files keep working.
@@ -290,6 +297,8 @@ install_battery_monitor() {
   local reconnect_delay="${BATT_RECONNECT_DELAY:-${SOLIX_RECONNECT_DELAY:-10}}"
   local victron_addr="${VICTRON_BLE_ADDR:-}"
   local victron_key="${VICTRON_ENCRYPTION_KEY:-}"
+  local smartshunt_addr="${VICTRON_SMARTSHUNT_BLE_ADDR:-}"
+  local smartshunt_key="${VICTRON_SMARTSHUNT_ENCRYPTION_KEY:-}"
   local venv="${BATTERY_MONITOR_VENV:-${SOLIX_MONITOR_VENV:-/opt/bartleby-solix-venv}}"
 
   # BATTERY_MONITOR_BLE_ADDR is the generic monitor device address. SOLIX_BLE_ADDR
@@ -301,22 +310,51 @@ install_battery_monitor() {
     solix_ble_addr="${battery_monitor_ble_addr}"
   fi
 
-  if [[ -z "${battery_monitor_ble_addr}" ]]; then
+  if [[ "${monitor_runtime}" == "script" && -z "${battery_monitor_ble_addr}" ]]; then
     echo "BATTERY_MONITOR_BLE_ADDR or SOLIX_BLE_ADDR is required when installing battery monitor; refusing to fall back to a default MAC." >&2
     exit 1
   fi
 
   local solix_ble_addr_env="# SOLIX_BLE_ADDR not used by this battery monitor"
-  if [[ "${monitor_script_name}" == "solix_monitor.py" ]]; then
+  if [[ "${monitor_runtime}" == "script" && "${monitor_script_name}" == "solix_monitor.py" ]]; then
     solix_ble_addr_env="Environment=SOLIX_BLE_ADDR=${solix_ble_addr}"
   fi
 
-  log "Installing battery monitor service (${service_name})"
+  local battery_monitor_exec_start
+  if [[ "${monitor_runtime}" == "telemetry" ]]; then
+    if [[ -z "${telemetry_deployment_src}" ]]; then
+      echo "BATTERY_MONITOR_DEPLOYMENT is required when BATTERY_MONITOR_RUNTIME=telemetry." >&2
+      exit 1
+    fi
+    if [[ "${telemetry_deployment_src}" != /* ]]; then
+      telemetry_deployment_src="${REPO_ROOT}/${telemetry_deployment_src#./}"
+    fi
+    if [[ ! -f "${telemetry_deployment_src}" ]]; then
+      echo "Telemetry deployment config not found: ${telemetry_deployment_src}" >&2
+      exit 1
+    fi
+    telemetry_deployment_name="$(basename "${telemetry_deployment_src}")"
+    battery_monitor_exec_start="${venv}/bin/python -m telemetry ${workdir}/telemetry/deployments/${telemetry_deployment_name}"
+  elif [[ "${monitor_runtime}" == "script" ]]; then
+    battery_monitor_exec_start="${venv}/bin/python ${workdir}/${monitor_script_name}"
+  else
+    echo "Unsupported BATTERY_MONITOR_RUNTIME=${monitor_runtime}; expected script or telemetry." >&2
+    exit 1
+  fi
+
+  log "Installing battery monitor service (${service_name}, runtime=${monitor_runtime})"
 
   "${SUDO[@]}" mkdir -p "${workdir}" "${logs_dir}" "$(dirname "${history_db_path}")"
-  "${SUDO[@]}" cp "${monitor_src}" "${workdir}/${monitor_script_name}"
-  "${SUDO[@]}" cp "${OPS_DIR}/history_store.py" "${workdir}/history_store.py"
-  "${SUDO[@]}" chmod 0755 "${workdir}/${monitor_script_name}"
+  if [[ "${monitor_runtime}" == "telemetry" ]]; then
+    "${SUDO[@]}" rm -rf "${workdir}/telemetry"
+    "${SUDO[@]}" mkdir -p "${workdir}/telemetry"
+    "${SUDO[@]}" cp -a "${REPO_ROOT}/telemetry/." "${workdir}/telemetry/"
+    "${SUDO[@]}" chmod -R u=rwX,go=rX "${workdir}/telemetry"
+  else
+    "${SUDO[@]}" cp "${monitor_src}" "${workdir}/${monitor_script_name}"
+    "${SUDO[@]}" cp "${OPS_DIR}/history_store.py" "${workdir}/history_store.py"
+    "${SUDO[@]}" chmod 0755 "${workdir}/${monitor_script_name}"
+  fi
   "${SUDO[@]}" chown -R "${monitor_user}:${monitor_user}" "${workdir}" "${logs_dir}" "$(dirname "${history_db_path}")"
 
   if [[ ! -x "${venv}/bin/python" ]]; then
@@ -338,8 +376,7 @@ install_battery_monitor() {
     "${tmp_unit}" \
     "BATTERY_MONITOR_USER=${monitor_user}" \
     "BATTERY_MONITOR_WORKDIR=${workdir}" \
-    "BATTERY_MONITOR_PYTHON=${venv}/bin/python" \
-    "BATTERY_MONITOR_SCRIPT=${workdir}/${monitor_script_name}" \
+    "BATTERY_MONITOR_EXEC_START=${battery_monitor_exec_start}" \
     "BLE_ADDR=${battery_monitor_ble_addr}" \
     "SOLIX_BLE_ADDR_ENV=${solix_ble_addr_env}" \
     "MONITOR_HOST=${host}" \
@@ -350,7 +387,9 @@ install_battery_monitor() {
     "MONITOR_CAPACITY_WH=${capacity_wh}" \
     "MONITOR_RECONNECT_DELAY=${reconnect_delay}" \
     "VICTRON_BLE_ADDR=${victron_addr}" \
-    "VICTRON_ENCRYPTION_KEY=${victron_key}"
+    "VICTRON_ENCRYPTION_KEY=${victron_key}" \
+    "VICTRON_SMARTSHUNT_BLE_ADDR=${smartshunt_addr}" \
+    "VICTRON_SMARTSHUNT_ENCRYPTION_KEY=${smartshunt_key}"
 
   "${SUDO[@]}" cp "${tmp_unit}" "/etc/systemd/system/${service_name}.service"
   rm -f "${tmp_unit}"
