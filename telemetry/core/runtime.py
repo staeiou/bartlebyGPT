@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+import subprocess
+import time
 
 from .deployment import Deployment, SourceContext
 from .history import battery_history_loop
@@ -12,15 +14,40 @@ from .reading import Snapshot
 log = logging.getLogger("telemetry")
 
 
+def _reset_bluetooth_stack(log) -> None:
+    log.warning("bluetooth: restarting bluetooth.service after repeated BLE source failures")
+    try:
+        subprocess.run(
+            ["systemctl", "restart", "bluetooth"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        log.warning("bluetooth: service restarted; waiting for adapter to reinitialize")
+        time.sleep(6)
+    except (OSError, subprocess.SubprocessError) as err:
+        log.error("bluetooth: reset failed: %s", err)
+
+
 async def supervise(source, ctx: SourceContext) -> None:
+    consecutive_failures = 0
     while True:
         try:
             await source.run(ctx)
+            consecutive_failures = 0
             ctx.log.warning("source %s returned; restarting", source.kind)
         except asyncio.CancelledError:
             raise
         except Exception as err:
+            consecutive_failures += 1
             ctx.log.warning("source %s failed: %s", source.kind, err)
+            if (
+                source.reset_after_failures > 0
+                and consecutive_failures >= source.reset_after_failures
+            ):
+                await asyncio.to_thread(_reset_bluetooth_stack, ctx.log)
+                consecutive_failures = 0
         await asyncio.sleep(source.reconnect_delay)
 
 

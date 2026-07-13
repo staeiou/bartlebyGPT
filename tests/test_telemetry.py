@@ -31,6 +31,11 @@ class TelemetryConfigTests(unittest.TestCase):
                 self.assertTrue(deployment.id)
                 self.assertGreater(len(deployment.sources), 0)
 
+    def test_smartshunt_deployment_resets_bluetooth_after_repeated_failures(self):
+        deployment = load_deployment("telemetry/deployments/victron-mppt-usb-smartshunt.py")
+        smartshunt = next(source for source in deployment.sources if source.id == "smartshunt")
+        self.assertEqual(smartshunt.reset_after_failures, 3)
+
     def test_rejects_missing_explicit_deployment_key(self):
         with self.assertRaises(ConfigError):
             deployment_from_config(

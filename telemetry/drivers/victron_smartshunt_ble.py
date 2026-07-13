@@ -115,7 +115,6 @@ class VictronSmartShuntBleDriver:
         queue: asyncio.Queue[dict[int, bytes]] = asyncio.Queue(maxsize=8)
         parser = BatteryMonitor(encryption_key)
         last_decoded = time.monotonic()
-        last_timeout_warning = 0.0
 
         def on_detection(device, adv) -> None:
             if device.address.upper() != mac:
@@ -139,14 +138,9 @@ class VictronSmartShuntBleDriver:
                 except asyncio.TimeoutError:
                     elapsed = time.monotonic() - last_decoded
                     if elapsed >= self.advertisement_timeout:
-                        now_monotonic = time.monotonic()
-                        if now_monotonic - last_timeout_warning >= self.advertisement_timeout:
-                            ctx.log.warning(
-                                "victron-smartshunt-ble: no decodable Instant Readout from %s for %.1fs; keeping scanner active",
-                                mac,
-                                elapsed,
-                            )
-                            last_timeout_warning = now_monotonic
+                        raise TimeoutError(
+                            f"no decodable SmartShunt Instant Readout from {mac} for {elapsed:.1f}s"
+                        )
                     continue
 
                 if self._parse_and_emit(ctx, parser, manufacturer_data):

@@ -98,7 +98,15 @@ def _source_from_config(index: int, config: dict[str, Any]) -> Source:
     driver_config = {
         key: value
         for key, value in config.items()
-        if key not in {"id", "kind", "role", "reconnect_delay", "stale_after_s", "capabilities"}
+        if key not in {
+            "id",
+            "kind",
+            "role",
+            "reconnect_delay",
+            "stale_after_s",
+            "capabilities",
+            "reset_after_failures",
+        }
     }
     try:
         driver = DRIVERS[kind].from_config(driver_config)
@@ -110,6 +118,9 @@ def _source_from_config(index: int, config: dict[str, Any]) -> Source:
     stale_after_s = _number(f"{label}.stale_after_s", config["stale_after_s"])
     if stale_after_s <= 0:
         raise ConfigError(f"{label}.stale_after_s: must be > 0")
+    reset_after_failures = int(config.get("reset_after_failures", 0))
+    if reset_after_failures < 0:
+        raise ConfigError(f"{label}.reset_after_failures: must be >= 0")
     return Source(
         id=str(config["id"]),
         kind=kind,
@@ -119,6 +130,7 @@ def _source_from_config(index: int, config: dict[str, Any]) -> Source:
         capabilities=dict(capabilities),
         reconnect_delay=reconnect_delay,
         stale_after_s=stale_after_s,
+        reset_after_failures=reset_after_failures,
     )
 
 

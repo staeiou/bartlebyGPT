@@ -36,6 +36,7 @@ class Source:
     capabilities: dict
     reconnect_delay: float
     stale_after_s: float
+    reset_after_failures: int = 0
 
     async def run(self, ctx: SourceContext) -> None:
         source_id = self.id

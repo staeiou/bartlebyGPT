@@ -30,6 +30,7 @@ CONFIG = {
             "role": "main",
             "reconnect_delay": 10,
             "stale_after_s": 600,
+            "reset_after_failures": 3,
             "capabilities": {"battery_soc_measured": True},
             "mac_env": "VICTRON_SMARTSHUNT_BLE_ADDR",
             "encryption_key_env": "VICTRON_SMARTSHUNT_ENCRYPTION_KEY",
