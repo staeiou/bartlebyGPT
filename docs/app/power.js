@@ -9,6 +9,7 @@ export function createPowerController({ elements, state, getSettings }) {
   let historyModalSectionKey = "";
   let modalStructureKey = "";
   let historyChartResizeRaf = 0;
+  let historyChartsRenderedKey = "";
   const historyChartInstances = {
     "24h": null,
     "7d": null,
@@ -21,6 +22,9 @@ export function createPowerController({ elements, state, getSettings }) {
   const LAST_SOLIX_SOC_STORAGE_KEY = "bartleby_last_battery_soc_pct";
   const wattsBuffer = []; // {ts, watts} — unique BLE readings, kept 30s
   let wattsBufferLastTs = null;
+  const renderCache = {
+    batteryVisualKey: "",
+  };
 
   function readCachedSolixSoc() {
     try {
@@ -146,6 +150,60 @@ export function createPowerController({ elements, state, getSettings }) {
     return Number.isFinite(parsed) ? parsed : null;
   }
 
+  function setTextIfChanged(node, value) {
+    const next = String(value);
+    if (node.textContent !== next) {
+      node.textContent = next;
+    }
+  }
+
+  function setHiddenIfChanged(node, hidden) {
+    const next = Boolean(hidden);
+    if (node.hidden !== next) {
+      node.hidden = next;
+    }
+  }
+
+  function setBatterySvgFill(soc) {
+    const fillH = (soc / 100) * 46;
+    const y = (53 - fillH).toFixed(1);
+    const height = fillH.toFixed(1);
+    if (elements.batteryBadgeFill.getAttribute("y") !== y) {
+      elements.batteryBadgeFill.setAttribute("y", y);
+    }
+    if (elements.batteryBadgeFill.getAttribute("height") !== height) {
+      elements.batteryBadgeFill.setAttribute("height", height);
+    }
+  }
+
+  function renderBatteryVisual(resolution, soc, fallbackFillPct) {
+    const isBattery = isBatteryProfile(resolution);
+    const socNum = toFiniteNumber(soc);
+    const hasSoc = isBattery && socNum !== null;
+    const rawFillPct = hasSoc
+      ? socNum
+      : (Number.isFinite(Number(fallbackFillPct)) ? Number(fallbackFillPct) : 100);
+    const fillPct = Math.max(0, Math.min(100, rawFillPct));
+    const quantizedFillPct = Math.round(fillPct * 10) / 10;
+    const fillKey = quantizedFillPct.toFixed(1);
+    const badgeText = hasSoc ? `${Math.round(socNum)}%` : "";
+    const nextKey = [
+      isBattery ? "battery" : "non-battery",
+      fillKey,
+      hasSoc ? badgeText : "hidden",
+    ].join("|");
+
+    if (renderCache.batteryVisualKey === nextKey) return;
+    renderCache.batteryVisualKey = nextKey;
+
+    document.documentElement.style.setProperty("--solix-battery-fill", `${fillKey}%`);
+    setHiddenIfChanged(elements.batteryBadge, !hasSoc);
+    setTextIfChanged(elements.batteryBadgePct, badgeText);
+    if (hasSoc) {
+      setBatterySvgFill(quantizedFillPct);
+    }
+  }
+
   function isBatteryProfile(resolution) {
     return Boolean(
       resolution &&
@@ -219,6 +277,7 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
       }
       historyChartOptionKeys[key] = "";
     }
+    historyChartsRenderedKey = "";
   }
 
   function formatXAxisLabelForMode(value, mode) {
@@ -241,7 +300,7 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
   }
 
   function getHistorySeriesLabels() {
-    const statistic = state.powerHistory && state.powerHistory.bin_statistic === "median"
+    const statistic = state.powerHistory && state.powerHistory.vllm_bin_statistic === "median"
       ? "median"
       : "mean";
     return {
@@ -438,25 +497,24 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
     const echartsLib = (typeof window !== "undefined" && window.echarts) ? window.echarts : null;
     if (!echartsLib || typeof echartsLib.init !== "function") return;
 
-    const windows = {
-      "24h": normalizeHistoryPoints(state.powerHistory.history_24h),
-      "7d": normalizeHistoryPoints(state.powerHistory.history_7d),
-    };
-
     for (const key of ["24h", "7d"]) {
       const node = elements.powerModalBody.querySelector(`.power-history-chart[data-history-window="${key}"]`);
       if (!node) continue;
 
       let chart = historyChartInstances[key];
-      const points = windows[key];
-      const firstTs = points.length ? points[0].ts : "";
-      const lastTs = points.length ? points[points.length - 1].ts : "";
+      const sourcePoints = state.powerHistory[`history_${key}`] && Array.isArray(state.powerHistory[`history_${key}`].points)
+        ? state.powerHistory[`history_${key}`].points
+        : [];
+      const firstRaw = sourcePoints.length ? sourcePoints[0] : null;
+      const lastRaw = sourcePoints.length ? sourcePoints[sourcePoints.length - 1] : null;
       const optionKey = [
         state.powerHistory && state.powerHistory.generated_at_iso ? state.powerHistory.generated_at_iso : "",
         state.powerHistory && state.powerHistory.bin_statistic ? state.powerHistory.bin_statistic : "",
-        points.length,
-        firstTs,
-        lastTs,
+        state.powerHistory && state.powerHistory.battery_bin_statistic ? state.powerHistory.battery_bin_statistic : "",
+        state.powerHistory && state.powerHistory.vllm_bin_statistic ? state.powerHistory.vllm_bin_statistic : "",
+        sourcePoints.length,
+        firstRaw && firstRaw.ts !== undefined ? firstRaw.ts : "",
+        lastRaw && lastRaw.ts !== undefined ? lastRaw.ts : "",
       ].join("|");
 
       if (!chart || chart.getDom() !== node) {
@@ -467,11 +525,20 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
       }
 
       if (historyChartOptionKeys[key] !== optionKey) {
+        const points = normalizeHistoryPoints(state.powerHistory[`history_${key}`]);
         chart.setOption(buildHistoryChartOption(points, key), true);
         historyChartOptionKeys[key] = optionKey;
         chart.resize();
       }
     }
+    historyChartsRenderedKey = getPowerHistoryModalSectionKey();
+  }
+
+  function ensureHistoryChartsRenderedIfNeeded(resolution) {
+    if (!elements.powerModalBackdrop.classList.contains("is-open")) return;
+    const nextKey = getPowerHistoryModalSectionKey();
+    if (nextKey && nextKey === historyChartsRenderedKey) return;
+    ensureHistoryChartsRendered(resolution);
   }
 
   function scheduleHistoryChartResize() {
@@ -485,23 +552,32 @@ ${hasPoints ? `<div class="power-history-chart" data-history-window="${escapeHtm
     });
   }
 
-  function buildPowerHistoryModalSection(resolution) {
-    if (!isBatteryProfile(resolution)) {
-      return "";
-    }
-
+  function getPowerHistoryModalSectionKey() {
     const history = state.powerHistory;
     const hasHistory = Boolean(history && history.history_24h && history.history_7d);
-    const cacheKey = [
+    return [
       hasHistory ? "1" : "0",
       state.powerHistoryAvailable ? "1" : "0",
       state.powerHistoryInFlight ? "1" : "0",
       history && history.generated_at_iso ? history.generated_at_iso : "",
       history && history.bin_statistic ? history.bin_statistic : "",
+      history && history.battery_bin_statistic ? history.battery_bin_statistic : "",
+      history && history.vllm_bin_statistic ? history.vllm_bin_statistic : "",
       history && Number.isFinite(Number(history.rows_considered)) ? Number(history.rows_considered) : "",
       history && history.history_24h && Array.isArray(history.history_24h.points) ? history.history_24h.points.length : 0,
       history && history.history_7d && Array.isArray(history.history_7d.points) ? history.history_7d.points.length : 0,
     ].join("|");
+  }
+
+  function buildPowerHistoryModalSection(resolution) {
+    if (!isBatteryProfile(resolution)) {
+      historyModalSectionKey = "";
+      return "";
+    }
+
+    const history = state.powerHistory;
+    const hasHistory = Boolean(history && history.history_24h && history.history_7d);
+    const cacheKey = getPowerHistoryModalSectionKey();
     historyModalSectionKey = cacheKey;
     if (cacheKey === historyModalCacheKey) {
       return historyModalCacheHtml;
@@ -589,8 +665,57 @@ ${charts}
 </div>`;
   }
 
+  function updatePowerDebugCells(payload) {
+    const ageCell = elements.powerModalBody.querySelector(".power-debug-age");
+    if (ageCell) {
+      if (payload && payload.power_reading_ts) {
+        ageCell.dataset.readingTs = payload.power_reading_ts;
+      }
+      const rts = Number(ageCell.dataset.readingTs);
+      if (rts) setTextIfChanged(ageCell, `${(Date.now() / 1000 - rts).toFixed(3)}s ago`);
+    }
+    for (const cell of elements.powerModalBody.querySelectorAll(".power-debug-avg")) {
+      const secs = Number(cell.dataset.secs);
+      if (!secs) continue;
+      const now = Date.now() / 1000;
+      const v = wattsAvg(secs);
+      const n = wattsBuffer.filter(p => p.ts >= now - secs).length;
+      setTextIfChanged(cell, v !== null ? `${v.toFixed(2)}W (n=${n})` : "—");
+    }
+    if (!payload) return;
+
+    const isWallTotal = payload.power_measurement_kind === "wall-total";
+    const fmt1 = (v) => (v === null || v === undefined || !Number.isFinite(Number(v))) ? "—" : `${Math.round(Number(v))}W`;
+    const rawCell = elements.powerModalBody.querySelector(".power-debug-raw");
+    if (rawCell) setTextIfChanged(rawCell, isWallTotal ? `${fmt1(payload.estimated_total_watts)} (wall meter)` : fmt1(payload.measured_server_watts ?? payload.measured_gpu_watts));
+    const totalCell = elements.powerModalBody.querySelector(".power-debug-total");
+    if (totalCell) setTextIfChanged(totalCell, fmt1(payload.estimated_total_watts));
+    const concurrentCell = elements.powerModalBody.querySelector(".power-debug-concurrent");
+    if (concurrentCell) {
+      const r = Number.isFinite(Number(payload.requests_running)) ? Math.round(Number(payload.requests_running)) : 0;
+      setTextIfChanged(concurrentCell, `${r} running`);
+    }
+    const waitingCell = elements.powerModalBody.querySelector(".power-debug-waiting");
+    if (waitingCell) {
+      const w = Number.isFinite(Number(payload.requests_waiting)) ? Math.round(Number(payload.requests_waiting)) : 0;
+      setTextIfChanged(waitingCell, String(w));
+    }
+  }
+
   function updatePowerModalBody(resolution, payload, costContext) {
+    const modalOpen = elements.powerModalBackdrop.classList.contains("is-open");
+    if (!modalOpen) return;
+
     const profile = resolution && resolution.profile ? resolution.profile : null;
+    const hasHistoryChartNode = Boolean(elements.powerModalBody.querySelector(".power-history-chart"));
+    const nextHistorySectionKey = isBatteryProfile(resolution) ? getPowerHistoryModalSectionKey() : "";
+    const nextStructureKey = `${resolution && resolution.resolvedProfileId ? resolution.resolvedProfileId : ""}|${nextHistorySectionKey}`;
+    if (modalOpen && hasHistoryChartNode && nextStructureKey === modalStructureKey) {
+      historyModalSectionKey = nextHistorySectionKey;
+      updatePowerDebugCells(payload);
+      return;
+    }
+
     let html = profile && profile.modalHtml ? profile.modalHtml : "";
 
     if (payload) {
@@ -657,8 +782,6 @@ ${charts}
     html += buildPowerHistoryModalSection(resolution);
     html += buildDebugSection(payload);
     const structureKey = `${resolution && resolution.resolvedProfileId ? resolution.resolvedProfileId : ""}|${historyModalSectionKey}`;
-    const modalOpen = elements.powerModalBackdrop.classList.contains("is-open");
-    const hasHistoryChartNode = Boolean(elements.powerModalBody.querySelector(".power-history-chart"));
     const shouldPreserveDom = modalOpen && hasHistoryChartNode && structureKey === modalStructureKey;
 
     if (!shouldPreserveDom && elements.powerModalBody.innerHTML !== html) {
@@ -669,40 +792,8 @@ ${charts}
     if (!shouldPreserveDom && elements.powerModalBody.innerHTML === html) {
       modalStructureKey = structureKey;
     }
-    const ageCell = elements.powerModalBody.querySelector(".power-debug-age");
-    if (ageCell) {
-      if (payload && payload.power_reading_ts) {
-        ageCell.dataset.readingTs = payload.power_reading_ts;
-      }
-      const rts = Number(ageCell.dataset.readingTs);
-      if (rts) ageCell.textContent = `${(Date.now() / 1000 - rts).toFixed(3)}s ago`;
-    }
-    for (const cell of elements.powerModalBody.querySelectorAll(".power-debug-avg")) {
-      const secs = Number(cell.dataset.secs);
-      if (!secs) continue;
-      const v = wattsAvg(secs);
-      const n = wattsBuffer.filter(p => p.ts >= Date.now() / 1000 - secs).length;
-      cell.textContent = v !== null ? `${v.toFixed(2)}W (n=${n})` : "—";
-    }
-    if (payload) {
-      const isWallTotal = payload.power_measurement_kind === "wall-total";
-      const fmt1 = (v) => (v === null || v === undefined || !Number.isFinite(Number(v))) ? "—" : `${Math.round(Number(v))}W`;
-      const rawCell = elements.powerModalBody.querySelector(".power-debug-raw");
-      if (rawCell) rawCell.textContent = isWallTotal ? `${fmt1(payload.estimated_total_watts)} (wall meter)` : fmt1(payload.measured_server_watts ?? payload.measured_gpu_watts);
-      const totalCell = elements.powerModalBody.querySelector(".power-debug-total");
-      if (totalCell) totalCell.textContent = fmt1(payload.estimated_total_watts);
-      const concurrentCell = elements.powerModalBody.querySelector(".power-debug-concurrent");
-      if (concurrentCell) {
-        const r = Number.isFinite(Number(payload.requests_running)) ? Math.round(Number(payload.requests_running)) : 0;
-        concurrentCell.textContent = `${r} running`;
-      }
-      const waitingCell = elements.powerModalBody.querySelector(".power-debug-waiting");
-      if (waitingCell) {
-        const w = Number.isFinite(Number(payload.requests_waiting)) ? Math.round(Number(payload.requests_waiting)) : 0;
-        waitingCell.textContent = String(w);
-      }
-    }
-    ensureHistoryChartsRendered(resolution);
+    updatePowerDebugCells(payload);
+    ensureHistoryChartsRenderedIfNeeded(resolution);
   }
 
   function syncPowerProfileUi() {
@@ -838,30 +929,22 @@ ${charts}
     const cachedSoc = readCachedSolixSoc();
     const hasCachedSoc = Number.isFinite(cachedSoc);
 
-    elements.powerWatts.textContent = "-- Watts";
-    elements.wattsLiveDot.hidden = true;
+    setTextIfChanged(elements.powerWatts, "-- Watts");
+    setHiddenIfChanged(elements.wattsLiveDot, true);
 
     if (isBatteryProfile(resolution)) {
-      document.documentElement.style.setProperty("--solix-battery-fill", hasCachedSoc ? `${cachedSoc}%` : "100%");
-      elements.batteryBadge.hidden = !hasCachedSoc;
-      elements.batteryBadgePct.textContent = hasCachedSoc ? `${Math.round(cachedSoc)}%` : "";
-      if (hasCachedSoc) {
-        const fillH = (cachedSoc / 100) * 46;
-        elements.batteryBadgeFill.setAttribute("y", (53 - fillH).toFixed(1));
-        elements.batteryBadgeFill.setAttribute("height", fillH.toFixed(1));
-      }
-      elements.powerCo2.textContent = window.innerWidth < 540 ? "Solar in: ?W" : "Solar in: ?W (connecting)";
-      elements.powerCost.textContent = hasCachedSoc ? `${Math.round(cachedSoc)}% battery` : "Battery status pending";
+      renderBatteryVisual(resolution, hasCachedSoc ? cachedSoc : null, 100);
+      setTextIfChanged(elements.powerCo2, window.innerWidth < 540 ? "Solar in: ?W" : "Solar in: ?W (connecting)");
+      setTextIfChanged(elements.powerCost, hasCachedSoc ? `${Math.round(cachedSoc)}% battery` : "Battery status pending");
     } else {
-      document.documentElement.style.setProperty("--solix-battery-fill", "0%");
-      elements.batteryBadge.hidden = true;
-      elements.powerCo2.textContent = "-- gCO2/hr";
-      elements.powerCost.textContent = "--/hr";
+      renderBatteryVisual(resolution, null, 0);
+      setTextIfChanged(elements.powerCo2, "-- gCO2/hr");
+      setTextIfChanged(elements.powerCost, "--/hr");
     }
 
     const activeCountText = formatActiveCountText(0);
-    elements.powerActiveCount.textContent = activeCountText;
-    elements.activeCountHeader.textContent = activeCountText;
+    setTextIfChanged(elements.powerActiveCount, activeCountText);
+    setTextIfChanged(elements.activeCountHeader, activeCountText);
     elements.powerDisplay.classList.remove("is-active");
     updatePowerModalBody(resolution, state.powerTelemetry, null);
   }
@@ -879,31 +962,23 @@ ${charts}
     if (costContext && costContext.dynamicTou) {
       elements.costPerKwh.value = Number(costContext.rateKwh).toFixed(5);
     }
-    elements.powerWatts.textContent = formatWattsDisplay(watts);
-    elements.wattsLiveDot.hidden = true;
+    setTextIfChanged(elements.powerWatts, formatWattsDisplay(watts));
+    setHiddenIfChanged(elements.wattsLiveDot, true);
     if (isBatteryProfile(resolution)) {
       const cachedSoc = readCachedSolixSoc();
       const hasCachedSoc = Number.isFinite(cachedSoc);
-      document.documentElement.style.setProperty("--solix-battery-fill", hasCachedSoc ? `${cachedSoc}%` : "100%");
-      elements.batteryBadge.hidden = !hasCachedSoc;
-      elements.batteryBadgePct.textContent = hasCachedSoc ? `${Math.round(cachedSoc)}%` : "";
-      if (hasCachedSoc) {
-        const fillH = (cachedSoc / 100) * 46;
-        elements.batteryBadgeFill.setAttribute("y", (53 - fillH).toFixed(1));
-        elements.batteryBadgeFill.setAttribute("height", fillH.toFixed(1));
-      }
-      elements.powerCo2.textContent = window.innerWidth < 540 ? "Solar in: ?W" : "Solar in: ?W (connecting)";
-      elements.powerCost.textContent = "Battery status pending";
+      renderBatteryVisual(resolution, hasCachedSoc ? cachedSoc : null, 100);
+      setTextIfChanged(elements.powerCo2, window.innerWidth < 540 ? "Solar in: ?W" : "Solar in: ?W (connecting)");
+      setTextIfChanged(elements.powerCost, "Battery status pending");
     } else {
-      document.documentElement.style.setProperty("--solix-battery-fill", "0%");
-      elements.batteryBadge.hidden = true;
-      elements.powerCo2.textContent = `${co2PerHr.toFixed(1)} gCO2/hr`;
-      elements.powerCost.textContent = formatCostPerHr(displayCost);
+      renderBatteryVisual(resolution, null, 0);
+      setTextIfChanged(elements.powerCo2, `${co2PerHr.toFixed(1)} gCO2/hr`);
+      setTextIfChanged(elements.powerCost, formatCostPerHr(displayCost));
     }
     const activeCount = active ? 1 : 0;
     const activeCountText = formatActiveCountText(activeCount);
-    elements.powerActiveCount.textContent = activeCountText;
-    elements.activeCountHeader.textContent = activeCountText;
+    setTextIfChanged(elements.powerActiveCount, activeCountText);
+    setTextIfChanged(elements.activeCountHeader, activeCountText);
     elements.powerDisplay.classList.toggle("is-active", Boolean(active));
     updatePowerModalBody(resolution, state.powerTelemetry, costContext);
   }
@@ -995,40 +1070,30 @@ ${charts}
     if (costContext && costContext.dynamicTou) {
       elements.costPerKwh.value = Number(costContext.rateKwh).toFixed(5);
     }
-    elements.powerWatts.textContent = formatWattsDisplay(displayWatts);
-    elements.wattsLiveDot.hidden = !payload.watts_is_live;
+    setTextIfChanged(elements.powerWatts, formatWattsDisplay(displayWatts));
+    setHiddenIfChanged(elements.wattsLiveDot, !payload.watts_is_live);
     const isLiveWallTotal = payload.watts_is_live && payload.power_measurement_kind === "wall-total";
     if (isBatteryProfile(resolution)) {
       const solarW = isLiveWallTotal ? (payload.battery_effective_solar_w ?? payload.solix_effective_solar_w ?? payload.battery_solar_input_w ?? payload.solix_solar_input_w) : null;
       const cachedSoc = readCachedSolixSoc();
-      const soc = isLiveWallTotal ? (payload.battery_soc_pct ?? payload.solix_soc_pct) : cachedSoc;
+      const liveSoc = payload.battery_soc_pct ?? payload.solix_soc_pct;
+      const soc = isLiveWallTotal && Number.isFinite(Number(liveSoc)) ? liveSoc : cachedSoc;
       const solarStatusText = window.innerWidth < 540 ? "Solar in: ?W" : "Solar in: ?W (connecting)";
       const batteryStatusText = "Battery status pending";
-      elements.powerCo2.textContent = Number.isFinite(Number(solarW)) && solarW !== null ? `Solar: ${solarW}W in` : solarStatusText;
+      setTextIfChanged(elements.powerCo2, Number.isFinite(Number(solarW)) && solarW !== null ? `Solar: ${solarW}W in` : solarStatusText);
       const hasSoc = Number.isFinite(Number(soc)) && soc !== null;
       const socNum = hasSoc ? Number(soc) : 0;
       const socRounded = hasSoc ? Math.round(socNum) : 0;
-      elements.powerCost.textContent = hasSoc ? `${socRounded}% battery` : batteryStatusText;
-      document.documentElement.style.setProperty(
-        "--solix-battery-fill",
-        hasSoc ? `${socNum}%` : "0%"
-      );
-      if (hasSoc) {
-        const fillH = (socNum / 100) * 46;
-        elements.batteryBadgeFill.setAttribute("y", (53 - fillH).toFixed(1));
-        elements.batteryBadgeFill.setAttribute("height", fillH.toFixed(1));
-      }
-      elements.batteryBadgePct.textContent = hasSoc ? `${socRounded}%` : "";
-      elements.batteryBadge.hidden = !hasSoc;
+      setTextIfChanged(elements.powerCost, hasSoc ? `${socRounded}% battery` : batteryStatusText);
+      renderBatteryVisual(resolution, hasSoc ? socNum : null, 0);
     } else {
-      document.documentElement.style.setProperty("--solix-battery-fill", "100%");
-      elements.batteryBadge.hidden = true;
-      elements.powerCo2.textContent = `${co2PerHr.toFixed(1)} gCO2/hr`;
-      elements.powerCost.textContent = formatCostPerHr(displayCost);
+      renderBatteryVisual(resolution, null, 100);
+      setTextIfChanged(elements.powerCo2, `${co2PerHr.toFixed(1)} gCO2/hr`);
+      setTextIfChanged(elements.powerCost, formatCostPerHr(displayCost));
     }
     const activeCountText = formatActiveCountText(activeCount);
-    elements.powerActiveCount.textContent = activeCountText;
-    elements.activeCountHeader.textContent = activeCountText;
+    setTextIfChanged(elements.powerActiveCount, activeCountText);
+    setTextIfChanged(elements.activeCountHeader, activeCountText);
     elements.powerDisplay.classList.toggle("is-active", activeCount > 0);
     let modalPayload = payload;
     if (Number.isFinite(displayWatts)) {
@@ -1298,7 +1363,7 @@ ${charts}
   function openPowerModal() {
     elements.powerModalBackdrop.classList.add("is-open");
     startPowerHistoryPolling();
-    void refreshPowerHistory();
+    void refreshPowerHistory({ force: true });
     updatePowerDisplay(state.busy);
     scheduleHistoryChartResize();
     void loadEcharts().then(() => {

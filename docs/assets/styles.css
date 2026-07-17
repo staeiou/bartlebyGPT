@@ -33,14 +33,15 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  /* Cold window light, the grey of a November counting house */
+  /* Warm paper, kept to cheap CSS gradients for low-power browsers. */
   background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.038'/%3E%3C/svg%3E"),
-    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(168, 162, 140, 0.14), transparent 60%),
+    repeating-linear-gradient(0deg, rgba(120, 92, 42, 0.018) 0 1px, transparent 1px 7px),
+    repeating-linear-gradient(90deg, rgba(255, 250, 225, 0.08) 0 1px, transparent 1px 13px),
+    radial-gradient(ellipse 90% 55% at 50% 0%, rgba(205, 184, 126, 0.20), transparent 62%),
     linear-gradient(180deg,
-      #e2e8f0 calc(100% - var(--solix-battery-fill)),
-      #ece8dc calc(100% - var(--solix-battery-fill)),
-      #e4dfd0 100%);
+      #edf0eb calc(100% - var(--solix-battery-fill)),
+      #f0e8d4 calc(100% - var(--solix-battery-fill)),
+      #e6d8b8 100%);
   color: var(--text);
   font-family: "EB Garamond", "Palatino Linotype", "Book Antiqua", Georgia, serif;
   font-size: 19px;
@@ -58,8 +59,7 @@ body::before {
   left: 0;
   right: 0;
   height: calc(100% - var(--solix-battery-fill));
-  backdrop-filter: saturate(0.18) brightness(1.03);
-  background: rgba(190, 215, 255, 0.05);
+  background: rgba(226, 220, 205, 0.10);
   pointer-events: none;
   z-index: 5;
 }
@@ -68,10 +68,7 @@ body::after {
   content: '';
   position: fixed;
   inset: 0;
-  backdrop-filter:
-    sepia(calc(var(--color-warmth) * 0.4))
-    brightness(calc(1 - var(--color-warmth) * 0.18))
-    contrast(calc(1 + var(--color-warmth) * 0.2));
+  background: rgba(42, 34, 20, calc(var(--color-warmth) * 0.12));
   pointer-events: none;
   z-index: 4;
 }
@@ -322,13 +319,13 @@ body:has(.messages:not(.is-welcome)) .battery-badge svg {
 
 .power-modal {
   background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.038'/%3E%3C/svg%3E"),
-    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(168, 162, 140, 0.14), transparent 60%),
+    repeating-linear-gradient(0deg, rgba(120, 92, 42, 0.018) 0 1px, transparent 1px 7px),
+    repeating-linear-gradient(90deg, rgba(255, 250, 225, 0.08) 0 1px, transparent 1px 13px),
+    radial-gradient(ellipse 90% 55% at 50% 0%, rgba(205, 184, 126, 0.20), transparent 62%),
     linear-gradient(180deg,
-      #e2e8f0 calc(100% - var(--solix-battery-fill)),
-      #ece8dc calc(100% - var(--solix-battery-fill)),
-      #e4dfd0 100%);
-  background-attachment: fixed;
+      #edf0eb calc(100% - var(--solix-battery-fill)),
+      #f0e8d4 calc(100% - var(--solix-battery-fill)),
+      #e6d8b8 100%);
   border: 1px solid var(--panel-border);
   border-radius: 3px;
   max-width: 1000px;
@@ -569,8 +566,8 @@ body:has(.messages:not(.is-welcome)) .battery-badge svg {
 }
 
 .chat-panel {
-  background: rgba(236, 232, 220, 0.60);
-  border: 1px solid rgba(30, 30, 28, 0.08);
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: var(--radius);
   box-shadow: none;
   overflow: hidden;
