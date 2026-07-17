@@ -177,6 +177,13 @@ stuck state after rapid service restarts or after being held in a connection too
     `victron_yield_today_wh`, and `victron_manufacturer_id`
   - Historical Victron backfill must use actual `victron-adv-YYYY-MM-DD.csv` rows only.
     Do not interpolate missing current, voltage, solar, or load values.
+- On the active Jetson, the shared production history DB is
+  `/opt/bartleby/lfp-monitor/logs/history.sqlite3` and is kept at roughly 14 days
+  full resolution. Older monthly archives live under
+  `/opt/bartleby/lfp-monitor/logs/history-archive/`.
+- Archive DBs keep `battery_events` at existing resolution. vLLM history is stored
+  separately as one-minute `vllm_minute_bins`; do not treat archive vLLM bins as raw
+  per-second samples.
 - Every successful JBD read appends a raw packet log to `jbd-basic-YYYY-MM-DD.csv`:
   - full raw packet hex, decoded core values, every payload byte in `b00...` columns
   - this is the best local forensic record short of a live `btmon` capture

@@ -732,6 +732,8 @@ def compute_history_payload(now_ts=None):
         "deployment_profile": DEPLOYMENT_PROFILE or None,
         "source": "solix_csv",
         "bin_statistic": "mean",
+        "battery_bin_statistic": "mean",
+        "vllm_bin_statistic": "mean",
         "rows_considered": len(rows),
         "history_24h": window_24h,
         "history_7d": window_7d,
@@ -817,8 +819,14 @@ def get_history_payload(force_refresh=False):
             cached is not None
             and (now_ts - generated_at) < HISTORY_CACHE_TTL_SECONDS
         )
+        is_refreshing = bool(HISTORY_CACHE.get("refreshing"))
         if not force_refresh and is_fresh:
             return cached
+        if force_refresh and is_refreshing and cached is not None:
+            return cached
+
+    if force_refresh:
+        return refresh_history_payload(now_ts=now_ts)
 
     if cached is not None:
         start_history_refresh(force=True)

@@ -130,7 +130,7 @@ def align_window_end(now_ts, bin_seconds):
     return math.floor(float(now_ts) / float(bin_seconds)) * float(bin_seconds)
 
 
-def build_median_binned_window(battery_rows, vllm_rows, start_ts, end_ts, bin_seconds):
+def build_history_window(battery_rows, vllm_bins, start_ts, end_ts, bin_seconds):
     if end_ts <= start_ts:
         return {
             "window_start_ts": int(start_ts),
@@ -145,8 +145,8 @@ def build_median_binned_window(battery_rows, vllm_rows, start_ts, end_ts, bin_se
             "load_values": [],
             "charge_values": [],
             "soc_values": [],
-            "running_values": [],
-            "waiting_values": [],
+            "avg_concurrent": None,
+            "avg_waiting": None,
         }
         for _ in range(bin_count)
     ]
@@ -169,20 +169,15 @@ def build_median_binned_window(battery_rows, vllm_rows, start_ts, end_ts, bin_se
         if soc_pct is not None:
             item["soc_values"].append(soc_pct)
 
-    for row in vllm_rows:
+    for row in vllm_bins:
         ts = row.get("ts")
-        if ts is None or ts < start_ts or ts >= end_ts:
+        if ts is None or ts <= start_ts or ts > end_ts:
             continue
-        idx = int((ts - start_ts) // bin_seconds)
+        idx = int((ts - start_ts) // bin_seconds) - 1
         if idx < 0 or idx >= bin_count:
             continue
-        item = bins[idx]
-        running = row.get("running")
-        if running is not None:
-            item["running_values"].append(running)
-        waiting = row.get("waiting")
-        if waiting is not None:
-            item["waiting_values"].append(waiting)
+        bins[idx]["avg_concurrent"] = row.get("avg_concurrent")
+        bins[idx]["avg_waiting"] = row.get("avg_waiting")
 
     points = []
     for idx, item in enumerate(bins):
@@ -194,8 +189,8 @@ def build_median_binned_window(battery_rows, vllm_rows, start_ts, end_ts, bin_se
                 "load_w": _median_or_none(item["load_values"], digits=3),
                 "charge_w": _median_or_none(item["charge_values"], digits=3),
                 "soc_pct": _median_or_none(item["soc_values"], digits=3),
-                "avg_concurrent": _median_or_none(item["running_values"], digits=1),
-                "avg_waiting": _median_or_none(item["waiting_values"], digits=1),
+                "avg_concurrent": item["avg_concurrent"],
+                "avg_waiting": item["avg_waiting"],
             }
         )
 
@@ -569,23 +564,35 @@ class SQLiteHistoryStore:
     def fetch_solix_rows(self, start_ts, end_ts):
         return self.fetch_battery_rows(start_ts, end_ts)
 
-    def fetch_vllm_rows(self, start_ts, end_ts):
+    def fetch_vllm_bins(self, start_ts, end_ts, bin_seconds):
+        bin_seconds = int(bin_seconds)
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT ts, requests_running, requests_waiting, requests_completed
+                SELECT
+                    (CAST(ts / ? AS INTEGER) + 1) * ? AS point_ts,
+                    ROUND(AVG(requests_running), 0) AS avg_running,
+                    ROUND(AVG(requests_waiting), 0) AS avg_waiting,
+                    COUNT(*) AS sample_count
                 FROM vllm_samples
                 WHERE ts >= ? AND ts < ?
-                ORDER BY ts ASC
+                GROUP BY CAST(ts / ? AS INTEGER)
+                ORDER BY point_ts ASC
                 """,
-                (float(start_ts), float(end_ts)),
+                (
+                    bin_seconds,
+                    bin_seconds,
+                    float(start_ts),
+                    float(end_ts),
+                    bin_seconds,
+                ),
             ).fetchall()
         return [
             {
-                "ts": float(row["ts"]),
-                "running": row["requests_running"],
-                "waiting": row["requests_waiting"],
-                "completed": row["requests_completed"],
+                "ts": float(row["point_ts"]),
+                "avg_concurrent": int(row["avg_running"]) if row["avg_running"] is not None else None,
+                "avg_waiting": int(row["avg_waiting"]) if row["avg_waiting"] is not None else None,
+                "sample_count": int(row["sample_count"] or 0),
             }
             for row in rows
         ]
@@ -600,7 +607,9 @@ class SQLiteHistoryStore:
         overall_end = max(end_24h, end_7d)
 
         battery_rows = self.fetch_battery_rows(overall_start, overall_end)
-        vllm_rows = self.fetch_vllm_rows(overall_start, overall_end)
+        vllm_rows_considered = self.count_vllm_rows(overall_start, overall_end)
+        vllm_24h_bins = self.fetch_vllm_bins(start_24h, end_24h, bin_24h_seconds)
+        vllm_7d_bins = self.fetch_vllm_bins(start_7d, end_7d, bin_7d_seconds)
 
         return {
             "generated_at_ts": int(now_ts),
@@ -608,20 +617,22 @@ class SQLiteHistoryStore:
             "lookback_days": int(lookback_days),
             "deployment_profile": os.environ.get("DEPLOYMENT_PROFILE", "").strip() or None,
             "source": "sqlite_history",
-            "bin_statistic": "median",
-            "rows_considered": len(battery_rows) + len(vllm_rows),
+            "bin_statistic": "mixed",
+            "battery_bin_statistic": "median",
+            "vllm_bin_statistic": "mean",
+            "rows_considered": len(battery_rows) + vllm_rows_considered,
             "battery_rows_considered": len(battery_rows),
-            "vllm_rows_considered": len(vllm_rows),
-            "history_24h": build_median_binned_window(
+            "vllm_rows_considered": vllm_rows_considered,
+            "history_24h": build_history_window(
                 battery_rows=battery_rows,
-                vllm_rows=vllm_rows,
+                vllm_bins=vllm_24h_bins,
                 start_ts=start_24h,
                 end_ts=end_24h,
                 bin_seconds=bin_24h_seconds,
             ),
-            "history_7d": build_median_binned_window(
+            "history_7d": build_history_window(
                 battery_rows=battery_rows,
-                vllm_rows=vllm_rows,
+                vllm_bins=vllm_7d_bins,
                 start_ts=start_7d,
                 end_ts=end_7d,
                 bin_seconds=bin_7d_seconds,

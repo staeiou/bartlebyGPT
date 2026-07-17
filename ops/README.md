@@ -226,6 +226,41 @@ Current LFP semantics:
 
 Manage: `sudo systemctl {start,stop,restart,status} lfp-monitor`
 
+## SQLite History Retention And Archives
+
+The active LFP/Victron deployment writes shared history to:
+
+```text
+/opt/bartleby/lfp-monitor/logs/history.sqlite3
+```
+
+The production DB is kept at full resolution for roughly 14 days. Older rows are archived
+by month under:
+
+```text
+/opt/bartleby/lfp-monitor/logs/history-archive/history-YYYY-MM.sqlite3
+```
+
+Archive DBs keep `battery_events` at existing cadence and store vLLM history as
+one-minute `vllm_minute_bins` with rounded mean running/waiting request counts,
+`sum_requests_completed`, and `sample_count`.
+
+Manual archive/prune command:
+
+```bash
+sudo python3 /home/ubuntu/vllm_jetson/bartlebyGPT/ops/scripts/archive_history.py \
+  --db /opt/bartleby/lfp-monitor/logs/history.sqlite3 \
+  --archive-dir /opt/bartleby/lfp-monitor/logs/history-archive \
+  --start 2026-04-04 \
+  --retention-days 14 \
+  --drop-before-start
+```
+
+Use `--dry-run` before changing the start/cutoff. The initial backfill from
+`2026-04-04` was run on `2026-07-14`. The tool does not run automatically yet.
+Pruning does not shrink `history.sqlite3` until `VACUUM`; schedule that separately
+only during a quiet maintenance window.
+
 ## Jetson Power Optimization
 
 On headless Jetson deployments, unused audio and camera kernel modules waste significant power (powertop shows audio codec at ~80% active time). `ops/config/modprobe.d/disable-av.conf` contains a deny list targeting audio, camera, HDMI CEC, and display modules.

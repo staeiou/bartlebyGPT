@@ -13,6 +13,7 @@ This branch currently includes:
 
 - Web app: [`docs/`](/home/ubuntu/vllm_jetson/bartlebyGPT/docs)
 - Telemetry server: [`ops/scripts/power_telemetry.py`](/home/ubuntu/vllm_jetson/bartlebyGPT/ops/scripts/power_telemetry.py)
+- History archive/prune tool: [`ops/scripts/archive_history.py`](/home/ubuntu/vllm_jetson/bartlebyGPT/ops/scripts/archive_history.py)
 - Solix monitor: [`ops/services/solix-monitor/solix_monitor.py`](/home/ubuntu/vllm_jetson/bartlebyGPT/ops/services/solix-monitor/solix_monitor.py)
 - LFP monitor: [`ops/services/lfp-monitor/lfp_monitor.py`](/home/ubuntu/vllm_jetson/bartlebyGPT/ops/services/lfp-monitor/lfp_monitor.py)
 - Shared SQLite history store: [`ops/history_store.py`](/home/ubuntu/vllm_jetson/bartlebyGPT/ops/history_store.py)
@@ -42,3 +43,21 @@ Do not treat `/opt/bartleby/*` or `/var/www/bartlebygpt/` as source of truth.
 For Solix deployments (`api-jetson`, `rpi4-llama-live`), `SOLIX_BLE_ADDR` must be provided per machine. The bootstrap refuses to fall back to a default MAC.
 
 For the LFP deployment (`jetson-solar-lfp`), the JBD BMS address is set as `BATTERY_MONITOR_BLE_ADDR` in the profile. `VICTRON_ENCRYPTION_KEY` must be set in `/root/bartleby-secrets.env`.
+
+## Current History Retention
+
+The active LFP/Victron deployment keeps full-resolution production history in:
+
+```text
+/opt/bartleby/lfp-monitor/logs/history.sqlite3
+```
+
+Production retention is roughly 14 days. Older history is archived by month in:
+
+```text
+/opt/bartleby/lfp-monitor/logs/history-archive/history-YYYY-MM.sqlite3
+```
+
+Archive DBs keep `battery_events` at their existing cadence and downsample vLLM rows
+to one-minute `vllm_minute_bins`. The initial archive backfill from `2026-04-04`
+was run on `2026-07-14`.
